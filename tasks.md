@@ -25,12 +25,34 @@
   **Non exécuté runtime** (pas d'émulateur ici) : à lancer sur le laptop/téléphone (`expo start`
   + Expo Go). Aucun moteur métier / Mapbox / Supabase implanté (volontaire, roadmap).
 
+- [x] **Sprint 002 — Design tokens & composants** (branche `sprint-002-design-tokens`, 2026-07-30)
+  Fondation visuelle complète, données simulées uniquement, aucun moteur/Mapbox/Supabase.
+  **Tokens** (`src/config/theme/`) : `colors`, `typography` (Manrope, échelle HANDOFF §3 —
+  timer 44/800 tabular, adresse 27/800, card-title 15/800, label-caps 11/800 +1.4, body 13/600,
+  meta 11/600), `spacing`/`screenMargin`, `radii`, `glass` (3 niveaux chip/panel/sheet),
+  `animation` (durées HANDOFF), `statusTone` (state → couleur, UI seulement), `fonts` +
+  `useAppFonts` (chargement Manrope 600/700/800 via `@expo-google-fonts/manrope`), agrégées
+  dans `theme`. **Domaine** : `src/domain/status.ts` (`MissionItemState` + libellés FR).
+  **Primitives** (`src/components/ui/`) : `Txt`, `GlassCard` (BlurView + tint + bordure),
+  `PressableScale` (retour pressé 90 ms), `Icon` (wrapper lucide), `ProgressBar`, `StatusDot`,
+  `Pill`. **Marque** (`src/components/brand/`) : `OfficialLogo` (SVG officiel via
+  react-native-svg-transformer), `Wordmark` (texte « OPÉRATEUR »). **Composants prioritaires**
+  (`src/components/mission/` + `controls/`) : `AppHeader`, `MissionCard`+`MissionCardCompact`,
+  `PhaseTimer` (+ `formatDuration` pur/testé), `AlertCard`, `SystemStatus`, `OfflineIndicator`,
+  `SyncIndicator`, `CurrentResidenceSheet`, `UpcomingResidenceRow`, `FixedTractor`,
+  `FloatingActionButton`, `ProblemButton`, `VoiceButton`, `BottomSheet` (coquille, gestes
+  différés). **Écran galerie** (`src/screens/ComponentGalleryScreen.tsx`) branché dans
+  `App.tsx` (charge les polices puis affiche la galerie) — remplace le placeholder Sprint 001.
+  **Dépendances ajoutées** : `expo-font`, `expo-asset` (requis transitivement par expo-font),
+  `@expo-google-fonts/manrope`, `expo-blur`, `react-native-svg` (+ `-transformer` en dev),
+  `expo-splash-screen`, `lucide-react-native`. `metro.config.js` créé (import `.svg` en
+  composants). Vérifié sur le VPS : `tsc --noEmit` OK, `eslint .` OK, `jest` 6/6 verts
+  (`formatDuration` + rendu `PhaseTimer`/`AlertCard`/`MissionCard`), `expo-doctor` 20/20.
+  **Non vérifié visuellement** (VPS sans émulateur) : à comparer à `mock-encours.png` sur le
+  laptop/téléphone via Expo Go. `BottomSheet` sans gestes de glissement (Sprint 003).
+
 ## À faire — prochains sprints (ordre roadmap `docs/11-Roadmap.md`)
 
-- [ ] **Sprint 002 — Design tokens & composants** (Phase 01) : thème sombre, tokens couleurs/
-  typo/espacements/rayons dans `src/config`, logo officiel intégré, composants glassmorphism de
-  base (`AppHeader`, `MissionCard`, `PhaseTimer`, `AlertCard`, `BottomSheet`, `FloatingActionButton`,
-  `ProblemButton`, `VoiceButton`, indicateurs GPS/Sync/Offline…). Données simulées uniquement.
 - [ ] **Sprint 003 — Écran maître EN COURS statique** (Phase 02) : reproduire la maquette Fable
   (carte simulée/image), comparer par capture, corriger proportions/espacements/opacités.
 - [ ] **Sprint 004 — Variantes opérationnelles** (Phase 03) : EN ROUTE / EN APPROCHE / EN COURS /
@@ -49,12 +71,19 @@
 
 ## À vérifier
 
-- [ ] **Lancer l'app en runtime** sur le laptop/téléphone (`npx expo start` + Expo Go) pour
-  confirmer que le placeholder Sprint 001 s'affiche (VPS headless = non vérifiable ici).
+- [ ] **Lancer l'app en runtime** sur le laptop/téléphone (`npx expo start` + Expo Go) : comparer
+  l'écran galerie du Sprint 002 à `mock-encours.png` (proportions, opacités, rayons, hiérarchie),
+  itérer si besoin (VPS headless = non vérifiable ici).
 
-## Suivi / limitations déclarées (Sprint 001)
+## Suivi / limitations déclarées
 
 - **Icône/splash = placeholders Expo** (SVG officiels non convertis en PNG 1024) → tâche de
   suivi, à faire avant un vrai build de distribution. Aucun faux logo intégré entre-temps.
+  (Sprint 001)
 - **Aucun test runner « natif »** au-delà de jest (unitaire) : les tests moteurs viendront avec
-  les moteurs (State Machine/GPS en priorité, `docs/10`).
+  les moteurs (State Machine/GPS en priorité, `docs/10`). (Sprint 001)
+- **`BottomSheet` sans gestes de glissement** (coquille + snap en props seulement) : le
+  glissement (gesture-handler/reanimated) sera câblé à l'assemblage de l'écran maître
+  (Sprint 003). (Sprint 002)
+- **Rendu visuel non vérifié** sur le VPS (pas d'émulateur) : à valider sur laptop/téléphone
+  contre `mock-encours.png`. (Sprint 002)

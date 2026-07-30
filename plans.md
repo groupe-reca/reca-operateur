@@ -6,9 +6,50 @@
 
 ## Plan actif
 
-- (aucun — prochain : Sprint 002, à planifier ici avant de coder)
+- (aucun — prochain : Sprint 003, à planifier ici avant de coder)
 
 ## Archivé
+
+### ✅ Sprint 002 — Design tokens & composants (2026-07-30)
+
+**Objectif** : transformer le design Fable validé en tokens + composants réutilisables
+(Phase 01 Roadmap), données simulées, sans GPS/Mapbox/Supabase/logique métier.
+
+**Contexte** : source des tokens = HANDOFF §3 ; source visuelle = `mock-encours.png` ; règles =
+`docs/01-Design-System.md` + `docs/10`. Décisions de portée : tous les composants prioritaires
+dans ce sprint ; `BottomSheet` = coquille sans gestes (différés à l'assemblage) ; écran galerie
+comme livrable vérifiable ; toutes les deps ajoutées restent Expo Go-compatibles (pas de dev
+build ce sprint).
+
+**Fichiers concernés** : `src/config/theme/**` (tokens), `src/domain/status.ts`,
+`src/components/ui/**` (primitives), `src/components/brand/**`, `src/components/mission/**`,
+`src/components/controls/**`, `src/screens/ComponentGalleryScreen.tsx`, `App.tsx` (chargement
+polices + galerie), `metro.config.js`, `src/types/svg.d.ts`, `tests/components.test.tsx` +
+mocks (`svgMock.tsx`, `lucideMock.js`).
+
+**Étapes réalisées** : (1) branche `sprint-002-design-tokens` depuis `sprint-001-initialisation` ;
+(2) deps (`expo-font`, `expo-asset`, `@expo-google-fonts/manrope`, `expo-blur`,
+`react-native-svg(-transformer)`, `expo-splash-screen`, `lucide-react-native`) + `metro.config.js` ;
+(3) tokens `src/config/theme/` ; (4) primitives UI ; (5) composants marque + mission + contrôles ;
+(6) écran galerie + câblage `App.tsx` ; (7) config Jest (moduleNameMapper `@/*`, mocks svg/lucide,
+`transformIgnorePatterns`) + tests (`formatDuration` pur + rendu de 3 composants).
+
+**Risques rencontrés / traités** : `expo-font` nécessitait `expo-asset` (transitif manquant,
+installé) ; lucide ESM non transformable par Jest → mocké (`lucideMock.js`, en `.js` pour
+échapper au typecheck TS — `tsconfig.include` ne matche que `.ts`/`.tsx`) ; `react-hooks/refs`
+(ESLint) sur `useRef(...).current` dans `PressableScale` → remplacé par `useMemo` ; ordre des
+imports dans `theme/index.ts` → réordonné ; `@types/jest` 30 désaligné avec `jest` 29/SDK 57 →
+épinglé 29.5.14 (`expo-doctor` 20/20 après correctif).
+
+**Critères de réussite** : composants conformes à la doc/maquette (visuellement à confirmer sur
+téléphone) · tokens centralisés (aucune couleur/valeur en dur ailleurs) · vrais assets ·
+aucun métier dans les composants · `tsc`/`eslint`/`jest`/`expo-doctor` verts — **atteints
+headless** ; comparaison visuelle **en attente** (VPS sans émulateur).
+
+**Impact documentation** : aucun changement de direction des `docs/` ; mémoire mise à jour
+(pièges Jest/RNTL/lint, dépendances, structure des tokens).
+
+**Limite** : `BottomSheet` sans gestes ; rendu non vérifié visuellement sur ce VPS.
 
 ### ✅ Sprint 001 — Initialisation (2026-07-30)
 
