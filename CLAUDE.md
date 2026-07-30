@@ -1,27 +1,75 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guide pour Claude Code (et tout contributeur) travaillant dans ce dépôt.
 
-## Project state
+## Ce qu'est `reca-operateur`
 
-`reca-operateur` is currently an **unmodified Vite + React 19 + TypeScript scaffold** — `src/App.tsx` is still the generated starter page and `README.md` is the stock Vite template README. There is no application-specific code, no router, no state management, no backend calls, and no test setup yet. Treat any structure below as the starting point to build on, not as established architecture.
+Application mobile **React Native + Expo** — assistant **terrain** pour opérateurs de
+déneigement (base générique des futures apps terrain Signa). Nom officiel affiché :
+**« RÉCA OPÉRATEUR »** (jamais « RECA Operator » dans l'UI). Le superviseur, lui, utilise
+**RECA App** (`/var/www/html/reca-app`, système maître + référence d'intégration). Ce dépôt
+**remplace** le prototype web `/var/www/html/reca-operator` (à ne pas utiliser comme fondation).
 
-Note: the working directory is not a git repository.
+## Protocole obligatoire (à chaque tâche)
 
-## Commands
+**Avant de coder :**
+1. Lire `memory.md` en entier, puis `tasks.md`, `plans.md`, `file-index.md`.
+2. Lire le(s) document(s) `docs/` concerné(s) par la tâche (ex. State Machine → `docs/09`,
+   Mapbox → `docs/05`, hors ligne → `docs/07`+`docs/08`). Ne jamais se fier à la mémoire seule
+   ou au dernier prompt.
+3. Pour toute tâche non triviale : écrire son **plan** dans `plans.md` **avant** d'implémenter.
+4. Consulter `reca-app` quand l'intégration de données l'exige (types/tables/conventions).
+
+**Après la tâche :** mettre à jour `tasks.md`, `plans.md`, `file-index.md`, `memory.md` et les
+`docs/` si une décision a changé. Une tâche non reflétée dans la mémoire **n'existe pas** pour la
+session suivante. Ne jamais laisser une doc connue comme fausse.
+
+## Commandes
 
 ```bash
-npm run dev      # Vite dev server with HMR
-npm run build    # tsc -b (project references) then vite build → dist/
-npm run lint     # eslint over the repo
-npm run preview  # serve the built dist/ locally
+npm run start       # Expo dev server (QR → Expo Go)
+npm run android     # Expo + build/lancement Android
+npm run prebuild    # génère android/ (ouvrir ensuite dans Android Studio)
+npm run typecheck   # tsc --noEmit (TS strict)
+npm run lint        # eslint (config Expo)
+npm test            # jest (jest-expo)
 ```
 
-There is no test runner installed. If tests are needed, add one (e.g. Vitest, which pairs with the existing Vite config) before writing tests.
+**Build réel** : le code vit sur le VPS ; on synchronise par **git** vers le laptop, où
+`expo prebuild` génère `android/` que l'on compile dans **Android Studio** et lance sur
+l'appareil. **Ce VPS n'a ni GUI ni émulateur** → ici on ne garantit que compile + types + lint +
+tests (headless) ; la validation **runtime/visuelle** se fait sur le laptop/téléphone.
 
-## Toolchain specifics worth knowing
+## Invariants d'architecture (voir `docs/02` + `docs/10`)
 
-- **TypeScript is split into project references** (`tsconfig.json` → `tsconfig.app.json` for `src/`, `tsconfig.node.json` for Vite config files). Type errors surface via `npm run build` (`tsc -b`), not via `npm run lint` — the ESLint config uses `tseslint.configs.recommended`, which is *not* type-aware. Run the build to typecheck.
-- `tsconfig.app.json` enables `noUnusedLocals`, `noUnusedParameters`, `verbatimModuleSyntax`, and `erasableSyntaxOnly`. Consequences: unused imports/vars break the build; type-only imports must use `import type`; and TS-only runtime constructs (`enum`, parameter properties, namespaces) are rejected.
-- **ESLint 10 flat config** (`eslint.config.js`) with `reactRefresh.configs.vite` — a module exporting a component must not also export non-component values, or Fast Refresh lint rules will fire.
-- `public/` is served at the site root and is referenced by absolute URL from JSX (e.g. `<use href="/icons.svg#github-icon">`); assets imported from `src/assets/` go through Vite's bundler instead.
+- **Map First** : la carte est l'application ; le reste flotte au-dessus.
+- **Les moteurs (`src/engines`) ne connaissent jamais React** ; ils communiquent par événements,
+  reçoivent leurs dépendances par injection (horloge, stockage, logger, client).
+- **Les composants ne touchent jamais Supabase ni Mapbox directement**, et ne contiennent aucune
+  transition d'état ni calcul GPS/temps. Le Timer **affiche**, ne compte pas.
+- **La State Machine est l'unique autorité** des transitions (`ATTENTE→ROUTE→APPROCHE→COURS→
+  TERMINÉE`, aucun retour automatique). **Une seule résidence active** à la fois.
+- **Local-first** : toute action terrain est écrite localement **avant** synchronisation.
+- **Tracteur fixe** au centre ; c'est la **carte qui tourne** (cap validé après temporisation,
+  jamais le cap GPS brut).
+
+## Conventions
+
+- **Langue** : code/types/fichiers/commentaires en **anglais** ; **UI en français**.
+- **Nommage** : composants/types `PascalCase` · fonctions/variables `camelCase` · constantes
+  globales `UPPER_SNAKE_CASE` · fichiers techniques `kebab-case` (`gps-engine.ts`).
+- **TypeScript strict** ; éviter `any` (localisé + justifié si inévitable). Valider toute donnée
+  externe. Horloge injectable pour les calculs temporels. UUID pour les identifiants.
+- Un composant/module = **une** responsabilité (idéalement ≤ 250 lignes).
+
+## Interdits
+
+Faux logo (utiliser les SVG de `assets/`) · écrire « RECA Operator » dans l'UI · secret commité
+(clés via env/EAS) · accès direct à Supabase/Mapbox depuis React · logique métier dans les
+composants · masquer une erreur par une valeur fictive · inventer une règle métier (nouveau
+statut/transition/table/rôle/moteur) sans validation · marquer une tâche terminée sans tests.
+
+## Système de mémoire
+
+Fichiers **à la racine** : `memory.md`, `tasks.md`, `plans.md`, `file-index.md` (ce n'est **pas**
+un dossier `memory/` comme dans `reca-app`). Ils sont persistants et obligatoires.
