@@ -88,10 +88,37 @@
   lib étant toujours `null` sous Jest — voir `memory.md`). **Non vérifié visuellement** (VPS
   sans émulateur) : comparaison à `mock-encours.png` à faire sur le laptop/téléphone.
 
+- [x] **Sprint 004 — Variantes opérationnelles** (branche `sprint-004-op-variants`, 2026-07-31).
+  Décline l'écran maître (Phase 03) sans redessiner l'application : `MissionScreen` devient
+  **piloté par les données** — un objet `MissionScreenState` (`src/screens/missionScreenState.ts`)
+  au lieu de constantes codées en dur. **4 variantes** (`src/screens/missionScreenMocks.ts`) :
+  EN ROUTE (bleu), EN APPROCHE (ambre), EN COURS (vert, adapté du Sprint 003), PROBLÈME (rouge
+  **fonctionnel** `colors.danger`, jamais `colors.brand`). **Hors scope documenté** : MISSION
+  ACTIVE et FIN DE MISSION sont des **écrans autonomes distincts** (Phase 11), pas des variantes
+  de cet écran-carte. **Deux vraies lacunes du Sprint 003 comblées** (`PhaseTimer`/`AlertCard`
+  jamais câblés malgré les Travaux explicites de la Phase 02) : `PhaseTimer` réintégré dans
+  `CurrentResidenceProgressCard` (remplace l'icône décorative `CircleDashed`, ajoute une prop
+  `color` désormais threadée partout au lieu de `colors.success` en dur) avec les valeurs de
+  l'exemple `docs/01-Design-System.md` (04:37/00:08/03:41) ; groupement d'alertes (règle
+  HANDOFF §5) = **1 `AlertCard` complète + chip « +N instructions »** (réutilise `Pill`), jamais
+  une pile de N cartes — nouvelle sous-fonction `AlertsRow` dans `MissionScreen.tsx`. **Nouveau
+  `ProblemStateCard`** (`src/components/mission/`) : remplace `CurrentResidenceProgressCard` au
+  même emplacement quand l'état est PROBLÈME (contenu structurellement différent — type/note/
+  chrono figé/2 actions — cohérent avec `docs/09-State-Machine.md`). **Mode hors ligne = overlay
+  additif** (`OfflineIndicator`, déjà construit Sprint 002), pas une 5e variante — démontré sur
+  le mock EN COURS. **Zoom suggéré et comportement du bottom sheet** : listés par la Roadmap
+  comme axes de variation mais sans mécanisme réel disponible (pas de vrai Map Engine ni de
+  gestes de sheet) → **non implémentés**, différés à leurs phases (04 et assemblage futur).
+  **Outil de vérification temporaire** : `src/screens/MissionScreenPreview.tsx` (dev-only, même
+  statut que `ComponentGalleryScreen`) affiche un sélecteur des 4 états ; `App.tsx` y bascule
+  temporairement (sera reswitché vers un `MissionScreen` piloté par le vrai State Machine au
+  Sprint 009-010). Vérifié sur le VPS : `tsc`/`eslint` propres, `jest` 13/13 verts (incluant
+  `ProblemStateCard`, le groupement d'alertes, et la distinction PROBLÈME vs. panneau de
+  tâches). Aucune nouvelle dépendance. **Non vérifié visuellement** (VPS sans émulateur, et
+  aucune maquette pixel pour ces 3 nouveaux états — jugement visuel direct sur téléphone).
+
 ## À faire — prochains sprints (ordre roadmap `docs/11-Roadmap.md`)
 
-- [ ] **Sprint 004 — Variantes opérationnelles** (Phase 03) : EN ROUTE / EN APPROCHE / EN COURS /
-  PROBLÈME / FIN / HORS LIGNE — même structure, seules changent couleur/libellé/chrono/alertes.
 - [ ] **Sprint 005-006 — Map Engine** (Phase 04) : intégrer `@rnmapbox/maps`, style nuit, caméra
   inclinée, tracteur fixe, 5 résidences, tracé suggéré, marqueurs, recentrage. **Dev build requis.**
 - [ ] **Sprint 007-008 — Données locales & MissionContext** (Phase 05).

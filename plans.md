@@ -6,9 +6,50 @@
 
 ## Plan actif
 
-- (aucun — prochain : Sprint 004, à planifier ici avant de coder)
+- (aucun — prochain : Sprint 005-006 (Map Engine), à planifier ici avant de coder)
 
 ## Archivé
+
+### ✅ Sprint 004 — Variantes opérationnelles (2026-07-31)
+
+**Objectif** : décliner l'écran maître (Phase 03) pour EN ROUTE/EN APPROCHE/EN COURS/PROBLÈME
+sans redessiner l'application — même structure, seules couleur/texte/chrono/alertes/boutons
+diffèrent.
+
+**Contexte/découvertes** : vérification des 2 autres images du dossier `uploads/` (planche de
+style antérieure + écran de connexion) — aucune ne montre les états manquants, la Roadmap
+(texte) + `docs/09-State-Machine.md` (vocabulaire d'état, déjà conforme à `domain/status.ts`)
+sont donc la source principale. Deux vraies lacunes du Sprint 003 trouvées en préparant ce
+sprint : `PhaseTimer`/`AlertCard` jamais câblés dans `MissionScreen` malgré les Travaux explicites
+de la Phase 02 — corrigées ici.
+
+**Fichiers concernés** : `src/screens/missionScreenState.ts` (nouveau, type `MissionScreenState`),
+`src/screens/missionScreenMocks.ts` (nouveau, 4 objets), `src/screens/MissionScreenPreview.tsx`
+(nouveau, dev-only), `src/screens/MissionScreen.tsx` (refactor piloté par props),
+`src/components/mission/CurrentResidenceProgressCard.tsx` (PhaseTimer + prop `color`),
+`src/components/mission/ProblemStateCard.tsx` (nouveau), `App.tsx`, `tests/missionScreen.test.tsx`.
+
+**Étapes réalisées** : (1) branche `sprint-004-op-variants` ; (2) `CurrentResidenceProgressCard`
+généralisé (couleur threadée, `PhaseTimer` réel) ; (3) `ProblemStateCard` nouveau ; (4)
+`MissionScreenState` (type) + `missionScreenMocks.ts` (4 variantes, valeurs de chrono fidèles à
+`docs/01`) ; (5) `MissionScreen` refactoré (prop `state`, rangée d'alertes groupées, overlay
+hors ligne, rendu conditionnel Problème vs. checklist) ; (6) `MissionScreenPreview` + bascule
+`App.tsx` ; (7) tests mis à jour/étendus.
+
+**Risques/décisions** : aucune maquette pixel pour ces états → jugement basé sur le texte
+Roadmap + `docs/09`, décisions de portée documentées (MISSION ACTIVE/FIN DE MISSION exclus,
+zoom/bottom-sheet différés, hors ligne = overlay pas 5e état).
+
+**Critères de réussite** : 4 variantes fonctionnelles partageant la structure, couleur rouge
+marque ≠ rouge problème respectée, chrono + alertes réellement câblés, `tsc`/`eslint`/`jest`
+(13/13) verts — **tous atteints headless**. Comparaison visuelle **en attente** (pas de pixel
+de référence pour ces états, jugement direct sur téléphone).
+
+**Impact documentation** : aucun changement des `docs/` officiels ; décisions de portée et
+gaps comblés consignés dans `memory.md`.
+
+**Limite** : rendu non vérifié visuellement sur ce VPS ; zoom suggéré et comportement du bottom
+sheet non implémentés (différés, pas de mécanisme réel disponible).
 
 ### ✅ Sprint 003 — Écran maître EN COURS statique (2026-07-31)
 

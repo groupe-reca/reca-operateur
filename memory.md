@@ -113,6 +113,65 @@
   livrable Phase 01 mais oubliée, la galerie en `ScrollView` s'en passait) : nécessaire dès qu'un
   écran a une mise en page fixe avec du contenu épinglé aux bords.
 
+## Variantes opérationnelles (Sprint 004)
+
+- **`MissionScreen` est piloté par les données** : une seule prop `state: MissionScreenState`
+  (`src/screens/missionScreenState.ts`) — les 4 variantes (`missionScreenMocks.ts`) sont de
+  simples objets différents rendus par le **même** écran, fidèle à « même structure, aucune
+  nouvelle architecture » (Roadmap Phase 03). Ne jamais dupliquer `MissionScreen` par état.
+- **Lacune Sprint 003 comblée** : `PhaseTimer` et `AlertCard` (construits Sprint 002, exigés par
+  les Travaux explicites de la Phase 02) n'avaient **jamais été câblés**. Corrigé : `PhaseTimer`
+  vit maintenant dans `CurrentResidenceProgressCard` (remplace l'icône `CircleDashed`
+  décorative) ; les alertes sont groupées dans `MissionScreen` (`AlertsRow` interne).
+- **Décision — portée des états** : seuls **EN ROUTE / EN APPROCHE / EN COURS / PROBLÈME** sont
+  des variantes de cet écran-carte. **MISSION ACTIVE et FIN DE MISSION sont des écrans autonomes
+  distincts** (section « Écrans finaux » de la Phase 11, Sprint 017-019) — ne jamais essayer de
+  les construire comme une 5e/6e couleur de `MissionScreen`. **Mode hors ligne n'est pas un état
+  de plus** : c'est un **overlay additif** (`OfflineIndicator`, déjà construit Sprint 002) qui
+  peut se superposer à **n'importe lequel** des 4 états (`state.offline`, optionnel) — démontré
+  sur le mock EN COURS.
+- **Couleur fonctionnelle par état** : EN ROUTE = `colors.navigation` (bleu), EN APPROCHE =
+  `colors.warning` (ambre), EN COURS = `colors.success` (vert), PROBLÈME = `colors.danger`
+  (rouge **fonctionnel**). **Règle absolue** (critère explicite de la Roadmap Phase 03) : « le
+  rouge de marque ne remplace pas les couleurs fonctionnelles » — `colors.brand` (`#E63947`,
+  identité/logo) ne doit **jamais** servir à colorer l'état PROBLÈME ni aucun autre état ; c'est
+  toujours `colors.danger` (`#EF4444`).
+- **Sémantique du chronomètre par état** (`docs/09-State-Machine.md`, section Chronomètres) :
+  EN ROUTE = « temps de déplacement », EN APPROCHE = « temps d'approche » (label choisi par
+  cohérence de nommage, la doc ne détaille pas ce calcul précisément), EN COURS = « temps
+  d'intervention », PROBLÈME = chronomètre **figé** (`docs/09` : « arrêter les chronomètres
+  actifs » au signalement) — valeur statique affichée via `PhaseTimer` dans `ProblemStateCard`,
+  pas de nouvelle logique de pause à inventer. Valeurs de mock reprises de l'exemple concret de
+  `docs/01-Design-System.md` (04:37 / 00:08 / 03:41) pour la fidélité.
+- **Nouveau `ProblemStateCard`** (pas une variante de props de `CurrentResidenceProgressCard`) :
+  contenu structurellement différent (type de problème, note, chrono figé, actions « Passer à la
+  suivante » / « Reprendre plus tard »), cohérent avec `docs/09` (`PROBLEM → EN_ROUTE/IN_PROGRESS`
+  = transitions **manuelles uniquement**, jamais de reprise automatique). Rendu au **même
+  emplacement** (colonne gauche) que `CurrentResidenceProgressCard`, choix conditionnel dans
+  `MissionScreen` sur `state.activeState === 'PROBLEM'`.
+- **Groupement des alertes** (règle HANDOFF §5) : **1 `AlertCard` complète + un chip « +N
+  instructions »** (réutilise `Pill`) — jamais une pile de N cartes complètes. Le panneau de
+  tâches (`ResidenceTasksCard`) n'est affiché **que** pour EN COURS (`state.tasks` optionnel,
+  `undefined` ailleurs) : une résidence n'a pas de « tâches en cours » avant l'arrivée.
+- **Différé, pas oublié** : zoom suggéré par état et comportement du bottom sheet par état
+  (axes de variation listés par la Roadmap Phase 03) n'ont **aucun mécanisme réel** à faire
+  varier pour l'instant (pas de vrai Map Engine avant Phase 04, pas de gestes de sheet — décision
+  Sprint 003 inchangée). Ne pas inventer un faux zoom/comportement pour combler cet axe ; à
+  implémenter réellement quand ces moteurs existeront.
+- **Outil de vérification temporaire** (`MissionScreenPreview.tsx`, dev-only) : `MissionScreen`
+  reste « pur » (aucun contrôle technique baké dedans — respecte HANDOFF « aucun bouton
+  technique »). Le sélecteur de variantes vit dans un écran **séparé**, même statut que
+  `ComponentGalleryScreen` (jamais un écran produit). `App.tsx` y bascule temporairement ;
+  repassera à un `MissionScreen` unique piloté par le vrai State Machine au Sprint 009-010 (même
+  bascule que Galerie→MissionScreen entre Sprint 002 et 003) — **ne pas laisser ce switcher
+  devenir une fonctionnalité permanente par inertie**.
+- **Vérification des maquettes disponibles** (avant de coder ce sprint) : les 2 autres images de
+  `.input/.../uploads/` ont été examinées — une planche de style antérieure (palette/police
+  différentes : SF Pro, fond `#0B0E13`, tracé rouge, badge EN COURS rouge — un brouillon
+  antérieur, supplanté par `mock-encours.png`/HANDOFF) et un écran de connexion (pertinent pour
+  le futur Sprint 017, pas pour celui-ci). **Aucune des deux ne montre EN ROUTE/EN APPROCHE/
+  PROBLÈME** — confirmé qu'aucune maquette pixel n'existe pour ces états à ce jour.
+
 ## Contraintes à ne jamais oublier
 
 - L'app doit **fonctionner hors ligne** (mission complète sans réseau — critère de production).

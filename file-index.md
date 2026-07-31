@@ -13,9 +13,9 @@
 - `babel.config.js` — preset `babel-preset-expo` (requis par le transform jest).
 - `eslint.config.js` — flat config `eslint-config-expo` (+ ignores `.input`, natifs, config cjs).
 - `index.ts` — enregistre le composant racine (`registerRootComponent(App)`).
-- `App.tsx` — charge les polices Manrope (`useAppFonts`) puis affiche `MissionScreen` dans un
-  `SafeAreaProvider` (Sprint 003). `ComponentGalleryScreen` reste dans le repo (référence/tests)
-  mais n'est plus le point d'entrée.
+- `App.tsx` — charge les polices Manrope (`useAppFonts`) puis affiche `MissionScreenPreview` dans
+  un `SafeAreaProvider` (Sprint 004, temporaire — voir `MissionScreenPreview.tsx`).
+  `ComponentGalleryScreen` reste dans le repo (référence/tests) mais n'est plus le point d'entrée.
 - `metro.config.js` — Metro Expo par défaut + `react-native-svg-transformer` (import `.svg`
   officiels comme composants React).
 - `.gitignore` — Expo + natifs générés + `.input/` + `ecosystem.config.cjs`.
@@ -39,10 +39,18 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 
 - `src/app/` — composition racine (providers, thème, montage). Vide.
 - `src/screens/`
-  - `MissionScreen.tsx` — **écran produit** (Sprint 003) : assemble tous les composants en
-    l'écran maître EN COURS, mise en page fixe (pas de scroll), mock data de l'exemple Roadmap.
+  - `MissionScreen.tsx` — **écran produit**, désormais **piloté par les données**
+    (Sprint 004) : accepte une prop `state: MissionScreenState`, assemble tous les composants,
+    mise en page fixe (pas de scroll), rend `CurrentResidenceProgressCard` ou `ProblemStateCard`
+    selon l'état, groupe les alertes (`AlertsRow` interne : 1 complète + chip « +N »).
+  - `missionScreenState.ts` (Sprint 004) — type `MissionScreenState`/`ActiveResidenceState`/
+    `MissionScreenAlert`, source de vérité de ce qui varie entre les 4 variantes opérationnelles.
+  - `missionScreenMocks.ts` (Sprint 004) — 4 objets mock (`EN_ROUTE_MOCK`/`APPROACHING_MOCK`/
+    `IN_PROGRESS_MOCK`/`PROBLEM_MOCK`), valeurs de chrono fidèles à `docs/01`.
+  - `MissionScreenPreview.tsx` (Sprint 004, **dev-only**, jamais un écran produit) — sélecteur
+    des 4 variantes, point d'entrée temporaire de `App.tsx` en attendant le vrai State Machine.
   - `ComponentGalleryScreen.tsx` — galerie de tous les composants (mock data), référence de
-    comparaison visuelle, plus le point d'entrée de `App.tsx` depuis le Sprint 003.
+    comparaison visuelle. N'est plus le point d'entrée depuis le Sprint 003.
 - `src/components/` — UI présentationnelle pure.
   - `ui/` — primitives : `Txt`, `GlassCard`, `PressableScale`, `Icon`, `ProgressBar`,
     `StatusDot`, `Pill`, `NotificationBadge` (Sprint 003, factorisé depuis `AppHeader`).
@@ -51,8 +59,10 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     Sprint 003), `MissionCardCompact`, `PhaseTimer` (+ `formatDuration` et
     `formatElapsedWithHours` purs, testés), `AlertCard`, `SystemStatus`, `OfflineIndicator`,
     `SyncIndicator`, `CurrentResidenceSheet`, `UpcomingResidenceRow`, `FixedTractor`,
-    `CurrentResidenceProgressCard` (Sprint 003, colonne gauche EN COURS), `ResidenceTasksCard`
-    (Sprint 003, panneau droit tâches).
+    `CurrentResidenceProgressCard` (colonne gauche ; Sprint 004 : `PhaseTimer` réel + prop
+    `color` threadée au lieu de `colors.success` en dur), `ResidenceTasksCard` (panneau droit
+    tâches, seulement pour EN COURS), `ProblemStateCard` (Sprint 004, remplace
+    `CurrentResidenceProgressCard` au même emplacement pour l'état PROBLÈME).
   - `controls/` — `FloatingActionButton`, `ProblemButton`, `VoiceButton`, `BottomSheet`
     (coquille, gestes de glissement toujours différés — la maquette n'en montre pas le besoin),
     `BottomTabBar` (Sprint 003 ; seuls Carte/Annonce fonctionnels, voir `memory.md`).
@@ -91,9 +101,11 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 
 - `tests/components.test.tsx` — `formatDuration` (pur) + rendu `PhaseTimer`/`AlertCard`/
   `MissionCard`.
-- `tests/missionScreen.test.tsx` (Sprint 003) — `formatElapsedWithHours` (pur) + rendu
-  `CurrentResidenceProgressCard`/`BottomTabBar` (dont un `fireEvent.press`) + `MissionScreen`
-  (avec `SafeAreaProvider` + métriques synthétiques — voir piège dans `memory.md`).
+- `tests/missionScreen.test.tsx` — `formatElapsedWithHours` (pur) + rendu
+  `CurrentResidenceProgressCard`/`ProblemStateCard`/`BottomTabBar` (dont un `fireEvent.press`) +
+  `MissionScreen` sur plusieurs variantes (`IN_PROGRESS_MOCK`/`PROBLEM_MOCK`/`APPROACHING_MOCK` —
+  Sprint 004, dont le groupement d'alertes) avec `SafeAreaProvider` + métriques synthétiques
+  (voir piège dans `memory.md`).
 - `tests/__mocks__/svgMock.tsx` — stub Jest pour les imports `.svg`.
 - `tests/__mocks__/lucideMock.js` — stub Jest pour `lucide-react-native` (Proxy → icône no-op ;
   fichier `.js` volontairement, hors du typecheck TS — voir `tsconfig.include`).
