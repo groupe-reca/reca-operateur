@@ -117,10 +117,30 @@
   tâches). Aucune nouvelle dépendance. **Non vérifié visuellement** (VPS sans émulateur, et
   aucune maquette pixel pour ces 3 nouveaux états — jugement visuel direct sur téléphone).
 
-## À faire — prochains sprints (ordre roadmap `docs/11-Roadmap.md`)
-
-- [ ] **Sprint 005-006 — Map Engine** (Phase 04) : intégrer `@rnmapbox/maps`, style nuit, caméra
-  inclinée, tracteur fixe, 5 résidences, tracé suggéré, marqueurs, recentrage. **Dev build requis.**
+- [x] **Sprint 005-006 — Map Engine** (branche `sprint-005-006-map-engine`, 2026-07-31).
+  Remplace la carte simulée SVG (`SimulatedMapBackground`, supprimée) par une vraie carte
+  **`@rnmapbox/maps`** (style standard `dark-v11`, pas un style Studio custom — hors de portée
+  sans accès Studio, même choix pragmatique que le repo frère `reca-operator`). **Rupture
+  importante** : module natif → **Expo Go ne suffit plus**, un dev build (Android Studio) est
+  désormais requis pour tout test runtime. **Jetons** : le public (`pk.*`) est réutilisé depuis
+  `reca-operator/.env.local` (même compte) ; le secret de téléchargement (`sk.*`, scope
+  Downloads:Read) est **nouveau** (jamais requis par les 2 apps web sœurs) — lu directement par
+  Gradle via `System.getenv('RNMAPBOX_MAPS_DOWNLOAD_TOKEN')`, **aucune conversion `app.json` →
+  `app.config.ts` nécessaire** (cette version du plugin a déprécié la config JSON du token en
+  faveur de la variable d'environnement seule). `.env.example` ajouté. **Nouveaux fichiers** :
+  `src/engines/map/mapCameraConfig.ts` (constantes pures + `zoomForState`, testées),
+  `src/integrations/mapbox/{mapboxClient,suggestedRoute}.ts` (point de contact unique + calcul
+  d'itinéraire avec repli ligne droite, pattern repris du repo frère), `src/components/map/
+  {MissionMapView,TractorMarker,ResidenceMarkerLayer,SuggestedRouteLayer,useSuggestedRoute}.tsx`.
+  **`ResidenceMapMarker` mis à niveau** (pas supprimé comme prévu au plan initial — sa logique de
+  badge restait utile) : couleurs par **rang** (`docs/05` : actif=vert grand marqueur+halo+icône
+  maison, 2e/3e=bleu, 4e/5e=gris), remplace la simplification binaire du Sprint 003. **Décisions**
+  consignées dans `memory.md` : réconciliation HANDOFF vs `docs/05` sur l'ancre du tracteur (24 %
+  du bas retenu), tracteur ne tourne jamais lui-même (c'est la caméra qui tourne), tracé via
+  Directions API avec repli. Vérifié sur le VPS : `tsc`/`eslint` propres, `expo-doctor` 20/20,
+  `jest` 22/22 verts (dérivation de zoom, repli/succès de `fetchSuggestedRoute`, écran entier
+  avec mock Jest de `@rnmapbox/maps`). **Non vérifié visuellement** : nécessite le dev build du
+  propriétaire (jeton secret à créer, `expo prebuild`, Android Studio).
 - [ ] **Sprint 007-008 — Données locales & MissionContext** (Phase 05).
 - [ ] **Sprint 009-010 — State Machine** (Phase 06) : transitions + invariants + résidences
   adjacentes, avec tests obligatoires (succès/refus/doublon/récupération/hors-ligne/journal).
@@ -133,9 +153,13 @@
 
 ## À vérifier
 
-- [ ] **Lancer l'app en runtime** sur le laptop/téléphone (`npx expo start` + Expo Go) : comparer
-  l'écran galerie du Sprint 002 à `mock-encours.png` (proportions, opacités, rayons, hiérarchie),
-  itérer si besoin (VPS headless = non vérifiable ici).
+- [ ] **Créer le jeton secret Mapbox** (`sk.*`, scope Downloads:Read, sur
+  `account.mapbox.com/access-tokens`) puis **builder l'app en dev build** : `.env.local` (2
+  jetons, voir `.env.example`) → `npx expo prebuild` → ouvrir `android/` dans Android Studio →
+  lancer sur l'appareil. **Expo Go ne fonctionne plus depuis le Sprint 005-006** (module natif
+  Mapbox). Comparer visuellement la carte (style sombre, tracteur fixe, marqueurs colorés par
+  rang, tracé bleu, recentrage) — aucune capture pixel de référence pour cette carte-ci, jugement
+  direct sur téléphone.
 
 ## Suivi / limitations déclarées
 

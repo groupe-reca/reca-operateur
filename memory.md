@@ -28,8 +28,10 @@
   natif `android/`. Le **code vit sur le VPS** (dev + typecheck/lint/tests headless) et se
   synchronise au laptop **par git**. Expo n'empêche pas le build Android Studio ; il l'outille
   (config plugins). Convertible en « bare » plus tard si besoin.
-- **Carte = `@rnmapbox/maps`** (confirmé par le HANDOFF). Non installé avant la **Phase 04**
-  (roadmap). Nécessitera un **dev build** (Expo Go ne charge pas le natif Mapbox).
+- **Carte = `@rnmapbox/maps`** (confirmé par le HANDOFF). **Installé au Sprint 005-006** —
+  premier module natif du projet, **Expo Go ne fonctionne plus depuis lors** ; tout test
+  runtime nécessite désormais un dev build (`expo prebuild` + Android Studio). Détails complets
+  dans la section « Map Engine réel (Sprint 005-006) » plus bas.
 - **Architecture modulaire stricte** (`docs/02` + `docs/10`) :
   - La **carte est l'application** (Map First) ; les panneaux flottent au-dessus.
   - **Les moteurs ne connaissent jamais React** ; ils communiquent par **événements**, reçoivent
@@ -171,6 +173,96 @@
   antérieur, supplanté par `mock-encours.png`/HANDOFF) et un écran de connexion (pertinent pour
   le futur Sprint 017, pas pour celui-ci). **Aucune des deux ne montre EN ROUTE/EN APPROCHE/
   PROBLÈME** — confirmé qu'aucune maquette pixel n'existe pour ces états à ce jour.
+
+## Map Engine réel (Sprint 005-006)
+
+- **Rupture Expo Go** : `@rnmapbox/maps` est un module natif → depuis ce sprint, **Expo Go ne
+  peut plus afficher l'app**. Tout test runtime nécessite un dev build (`expo prebuild` +
+  Android Studio) sur le laptop du propriétaire.
+- **Deux jetons Mapbox distincts, à ne jamais confondre** :
+  - **Public** (`pk.*`, `EXPO_PUBLIC_MAPBOX_TOKEN`) — runtime, inliné dans le bundle JS (convention
+    Expo `EXPO_PUBLIC_*`). **Réutilisé** depuis `reca-operator/.env.local` (`VITE_MAPBOX_TOKEN`,
+    même compte Mapbox).
+  - **Secret** (`sk.*`, scope **Downloads:Read**, `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`) — authentifie le
+    téléchargement du SDK natif (Maven/CocoaPods) **au moment du build**, jamais dans le bundle.
+    **Nouveau** : ni `reca-app` ni `reca-operator` n'en avaient besoin (intégrations web). Le
+    propriétaire doit le créer sur `account.mapbox.com/access-tokens`.
+  - **Piège évité** : la version installée du plugin Expo (`@rnmapbox/maps` 10.3.5) a **déprécié**
+    la config JSON du token de téléchargement (`RNMapboxMapsDownloadToken` dans `app.json`) au
+    profit de la **seule** variable d'environnement, lue directement par Gradle
+    (`System.getenv('RNMAPBOX_MAPS_DOWNLOAD_TOKEN')`). **Aucune conversion `app.json` →
+    `app.config.ts` n'était donc nécessaire** (contrairement à ce que le plan initial supposait) —
+    `app.json` reste statique, `npx expo install @rnmapbox/maps` y a lui-même ajouté le plugin en
+    chaîne simple.
+- **Style de carte = `dark-v11` standard Mapbox**, pas un style Studio entièrement custom (hors
+  de portée sans accès à Mapbox Studio). Même choix pragmatique déjà validé par le repo frère
+  `reca-operator` pour son propre Map Engine. Nos propres `LineLayer`/`SymbolLayer`/`PointAnnotation`
+  (route, marqueurs) se posent par-dessus.
+- **Divergence de doc réconciliée — ancre du tracteur** : `HANDOFF.md` §1 dit « 24 % du bas de la
+  zone carte » (= 76 % depuis le haut) ; `docs/05-Map-Engine.md` dit « environ 60 % de la
+  hauteur ». **HANDOFF retenu** (plus précis, écrit spécifiquement pour cette intégration) —
+  constante unique `TRACTOR_ANCHOR_FRACTION_FROM_TOP = 0.76` (`src/engines/map/mapCameraConfig.ts`),
+  utilisée à la fois pour la position à l'écran du `TractorMarker` et pour le calcul du
+  `paddingTop` de la caméra (`cameraPaddingTopFor`, dérivé algébriquement : avec `paddingBottom=0`,
+  `paddingTop = (2×ancre − 1) × hauteur`). **Ne pas réintroduire le chiffre de `docs/05`** sans
+  trancher explicitement — la divergence n'est pas résolue dans les docs elles-mêmes.
+- **Le tracteur ne tourne jamais lui-même** — c'est la **caméra** qui tourne (son `heading` suit
+  la position simulée), `TractorMarker` reste visuellement fixe pointant « vers le haut » de
+  l'écran. Décision alignée sur le repo frère `reca-operator` (même problème, même solution déjà
+  validée) et sur la phrase de `docs/05` « le tracteur reste fixe à l'écran, la carte se déplace
+  sous lui ». `HANDOFF.md` §1 (« rotation = cap affiché de la caméra ») est ambigu sur ce point
+  précis — lu comme « aucune rotation propre à ajouter à l'icône », pas comme une double rotation.
+- **Rangs des marqueurs ≠ index de mission** : `docs/05` numérote les 5 marqueurs visibles par
+  **rang relatif** (1=actif/vert grand marqueur+halo+maison, 2-3=bleu, 4-5=gris) — un concept
+  **indépendant** de l'index absolu de la résidence dans la mission (ex. « 3/28 » affiché ailleurs
+  par `MissionCard`/`CurrentResidenceProgressCard`). Les deux numérotations ne sont **pas**
+  réconciliées entre elles dans les mocks actuels (simplification illustrative assumée, pas un
+  bug) — l'unification viendra naturellement une fois qu'un vrai `MissionContext` (Phase 05)
+  alimentera les deux à partir d'une seule source.
+- **Tracé suggéré = Mapbox Directions API + repli ligne droite** (`src/integrations/mapbox/
+  suggestedRoute.ts` + hook `useSuggestedRoute.ts`), pattern **repris tel quel** du repo frère
+  `reca-operator` (déjà validé en conditions réelles là-bas). Ne jamais laisser une erreur réseau/
+  jeton manquant faire planter la carte — le repli est **toujours** disponible et retourné
+  immédiatement, upgradé silencieusement si l'appel réussit.
+- **Tension architecturale assumée, pas résolue** : `docs/02` dit « les moteurs ne connaissent
+  jamais React ». L'API de `@rnmapbox/maps` est **intrinsèquement basée sur des composants React**
+  (`<MapView>`, `<Camera>`, `<PointAnnotation>`…) — un vrai « Map Engine sans React » n'est donc
+  pas réalisable tel que l'architecture l'envisage dans l'idéal. Compromis adopté : la partie
+  **réellement pure** (constantes caméra, `zoomForState`, `cameraPaddingTopFor`) vit dans
+  `src/engines/map/` comme prévu ; le **rendu Mapbox lui-même** (composants JSX) vit dans
+  `src/components/map/`. Ne pas essayer de « corriger » ça en déplaçant les composants React dans
+  `engines/` — ce serait pire (composants dans un dossier qui prétend ne jamais connaître React).
+- **`ResidenceMapMarker` mis à niveau plutôt que supprimé** : le plan initial prévoyait de
+  supprimer `SimulatedMapBackground` **et** `ResidenceMapMarker` (les deux « Sprint 003 SVG »).
+  En pratique, seul `SimulatedMapBackground` (le fond SVG) était vraiment obsolète —
+  `ResidenceMapMarker` (le badge React/View) restait directement réutilisable comme contenu d'un
+  `PointAnnotation` Mapbox réel. Mis à jour (couleur par rang) plutôt que recréé.
+- **Pièges Jest rencontrés** :
+  - `@rnmapbox/maps` casse Jest par défaut (ESM non transformé + vues natives non instanciables).
+    **Mocké** via `moduleNameMapper` → `tests/__mocks__/rnmapboxMock.js` (composants `View`
+    passthrough + `Camera` en `forwardRef` avec méthodes no-op) — même famille de solution que le
+    mock `lucide-react-native` du Sprint 002. La lib fournit un `setup-jest.js` officiel (mock des
+    constantes `NativeModules.RNMBXModule`) mais je ne l'ai **pas** utilisé (mock manuel plus
+    simple/prévisible pour nos besoins, aucun test de rendu Mapbox réel n'étant recherché ici).
+  - `Mapbox.Camera` **utilisé comme type** (`useRef<Mapbox.Camera>`) échoue : `Mapbox` est un
+    **import par défaut** (valeur), pas un namespace TS — la propriété `.Camera` n'y est pas
+    accessible en position de type. **Fixé** en important le type `Camera` directement depuis
+    `@rnmapbox/maps` (`import type { Camera as CameraRef } from '@rnmapbox/maps'`), séparé de
+    l'import de valeur `Mapbox` (via notre wrapper `mapboxClient.ts`).
+  - `PointAnnotation`'s `id`/`key` attendent un **`string`**, pas le `number` de `residence.n` —
+    utiliser un gabarit de chaîne (``residence-${n}``) pour les deux.
+  - `useSuggestedRoute` a retrouvé le piège **`react-hooks/set-state-in-effect`** déjà rencontré
+    sur le repo frère : ne jamais appeler `setState` de façon synchrone en tête de corps d'effet
+    pour réinitialiser un repli — le repli doit être **calculé au rendu** (comparaison de
+    référence `resolved.forWaypoints === waypoints`), l'effet ne fait que **mettre à niveau**
+    l'état une fois la vraie résolution arrivée.
+  - Avertissements `act()` dans les tests qui rendent `MissionScreen` : `fetchSuggestedRoute` est
+    `async` même dans son chemin de repli synchrone (pas de jeton) → la résolution arrive un tick
+    après le rendu du test. Fixé par un `await act(async () => {})` après `render()` dans le
+    helper de test partagé.
+  - `global.fetch` invalide en TS ici (`@types/node` pas dans `tsconfig.types`, volontairement
+    restreint à `["jest","react"]`) → utiliser **`globalThis.fetch`** (standard ECMAScript, pas de
+    dépendance de types supplémentaire, de toute façon plus portable que `global`).
 
 ## Contraintes à ne jamais oublier
 

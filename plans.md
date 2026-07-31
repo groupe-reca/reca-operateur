@@ -6,9 +6,62 @@
 
 ## Plan actif
 
-- (aucun — prochain : Sprint 005-006 (Map Engine), à planifier ici avant de coder)
+- (aucun — prochain : Sprint 007-008 (Données locales & MissionContext), à planifier ici avant
+  de coder)
 
 ## Archivé
+
+### ✅ Sprint 005-006 — Map Engine (2026-07-31)
+
+**Objectif** : remplacer la carte simulée SVG par une vraie carte `@rnmapbox/maps` (Phase 04),
+position/résidences/tracé simulés (pas de GPS réel), style sombre, tracteur fixe, caméra,
+marqueurs colorés par rang, recentrage.
+
+**Contexte/découvertes** : rupture de compatibilité Expo Go dès ce sprint (module natif). Jeton
+public réutilisé depuis `reca-operator/.env.local` (même compte) ; jeton secret Downloads:Read
+nouveau (aucune des 2 apps sœurs web n'en avait besoin) — confirmé avec le propriétaire avant de
+coder. Découverte en cours d'implémentation : cette version du plugin Expo de `@rnmapbox/maps` a
+**déprécié** la config JSON du token de téléchargement au profit de la seule variable
+d'environnement lue par Gradle — la conversion `app.json` → `app.config.ts` prévue au plan
+**n'était finalement pas nécessaire**, simplification bienvenue actée en cours de route.
+
+**Fichiers concernés** : `.env.example`, `src/engines/map/mapCameraConfig.ts`,
+`src/integrations/mapbox/{mapboxClient,suggestedRoute}.ts`, `src/components/map/
+{MissionMapView,TractorMarker,ResidenceMarkerLayer,SuggestedRouteLayer,useSuggestedRoute}.tsx`
+(nouveaux), `ResidenceMapMarker.tsx` (mis à niveau, pas supprimé — révision du plan initial),
+`SimulatedMapBackground.tsx` (supprimé), `missionScreenState.ts`/`missionScreenMocks.ts`
+(données de carte simulées ajoutées), `MissionScreen.tsx` (branchement + recentrage via ref),
+`package.json` (dépendance + mock Jest), tests (`mapEngine.test.ts`, mock `rnmapboxMock.js`).
+
+**Étapes réalisées** : (1) branche `sprint-005-006-map-engine` ; (2) `npx expo install
+@rnmapbox/maps` (a lui-même ajouté le plugin à `app.json`) ; (3) vérification de l'API TS
+installée (Camera/MapView/PointAnnotation/ShapeSource/LineLayer/StyleURL) avant d'écrire le code,
+découverte de la dépréciation du token JSON à cette occasion ; (4) `mapCameraConfig.ts` (constantes
+pures + `zoomForState`, dépend de `domain/status` et non de `screens/` — sens de dépendance
+architectural respecté) ; (5) `mapboxClient.ts` + `suggestedRoute.ts` ; (6) `ResidenceMapMarker`
+mis à niveau (rang→couleur) ; (7) `TractorMarker`/`ResidenceMarkerLayer`/`SuggestedRouteLayer`/
+`useSuggestedRoute`/`MissionMapView` ; (8) données mock de carte + branchement `MissionScreen` ;
+(9) mock Jest de `@rnmapbox/maps` + tests (logique pure + écran entier).
+
+**Risques rencontrés / traités** : erreur TS sur `key`/`id` de `PointAnnotation` (attend un
+`string`, pas le `number` de `residence.n`) → corrigé ; `Mapbox.Camera` utilisé comme **type**
+échouait (import par défaut, pas un namespace TS) → import direct du type `Camera` depuis
+`@rnmapbox/maps` ; `react-hooks/set-state-in-effect` sur `useSuggestedRoute` (même piège que le
+repo frère) → repli calculé au rendu, pas via `setState` synchrone dans l'effet ; avertissements
+`act()` dans les tests (résolution microtask de la route après le rendu) → flush explicite dans
+le helper de test ; `global.fetch` invalide en TS (pas de `@types/node` dans `tsconfig.types`) →
+`globalThis.fetch`, plus portable de toute façon.
+
+**Critères de réussite** : carte Mapbox intégrée et configurée, tracteur fixe + caméra suivant la
+position simulée, 5 marqueurs par rang, tracé avec repli, recentrage, ancienne carte SVG
+supprimée, `tsc`/`eslint`/`jest` (22/22) verts — **tous atteints headless**. Rendu visuel réel
+**en attente** (dev build requis, jeton secret à créer par le propriétaire).
+
+**Impact documentation** : aucun changement des `docs/` officiels ; divergence HANDOFF/`docs/05`
+sur l'ancre du tracteur et tension architecturale (Map Engine "sans React" vs API `@rnmapbox/maps`
+intrinsèquement basée sur des composants React) consignées dans `memory.md`.
+
+**Limite** : rendu non vérifié visuellement (aucun émulateur sur ce VPS, module natif en plus).
 
 ### ✅ Sprint 004 — Variantes opérationnelles (2026-07-31)
 

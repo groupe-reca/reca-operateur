@@ -8,7 +8,11 @@
 - `package.json` — dépendances et scripts (`start`/`android`/`ios`/`web`/`prebuild`/
   `typecheck`/`lint`/`test`). Preset jest `jest-expo`.
 - `app.json` — config Expo (nom « RÉCA Opérateur », portrait, thème sombre, `scheme`,
-  ids `ca.groupereca.recaoperateur`, icônes).
+  ids `ca.groupereca.recaoperateur`, icônes, plugins dont `@rnmapbox/maps` depuis Sprint 005-006 —
+  le jeton de téléchargement natif n'y figure **pas**, lu directement par Gradle via
+  `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`, voir `.env.example`).
+- `.env.example` (Sprint 005-006) — `EXPO_PUBLIC_MAPBOX_TOKEN` (public, runtime) +
+  `RNMAPBOX_MAPS_DOWNLOAD_TOKEN` (secret, build natif uniquement). `.env.local` gitignored.
 - `tsconfig.json` — TS strict + flags (`docs/10`), `types: [jest, react]`, alias `@/* → src/*`.
 - `babel.config.js` — preset `babel-preset-expo` (requis par le transform jest).
 - `eslint.config.js` — flat config `eslint-config-expo` (+ ignores `.input`, natifs, config cjs).
@@ -45,8 +49,11 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     selon l'état, groupe les alertes (`AlertsRow` interne : 1 complète + chip « +N »).
   - `missionScreenState.ts` (Sprint 004) — type `MissionScreenState`/`ActiveResidenceState`/
     `MissionScreenAlert`, source de vérité de ce qui varie entre les 4 variantes opérationnelles.
+    Champ `map` (Sprint 005-006) : position simulée + 5 résidences (`n`/`rank`/`coordinate`) +
+    `routeWaypoints` — numérotation de rang **indépendante** de l'index de mission (`mission.index`).
   - `missionScreenMocks.ts` (Sprint 004) — 4 objets mock (`EN_ROUTE_MOCK`/`APPROACHING_MOCK`/
-    `IN_PROGRESS_MOCK`/`PROBLEM_MOCK`), valeurs de chrono fidèles à `docs/01`.
+    `IN_PROGRESS_MOCK`/`PROBLEM_MOCK`), valeurs de chrono fidèles à `docs/01`. Partagent tous
+    `MOCK_MAP` (Sprint 005-006, boucle simulée près de Saint-Jérôme, QC).
   - `MissionScreenPreview.tsx` (Sprint 004, **dev-only**, jamais un écran produit) — sélecteur
     des 4 variantes, point d'entrée temporaire de `App.tsx` en attendant le vrai State Machine.
   - `ComponentGalleryScreen.tsx` — galerie de tous les composants (mock data), référence de
@@ -66,17 +73,30 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   - `controls/` — `FloatingActionButton`, `ProblemButton`, `VoiceButton`, `BottomSheet`
     (coquille, gestes de glissement toujours différés — la maquette n'en montre pas le besoin),
     `BottomTabBar` (Sprint 003 ; seuls Carte/Annonce fonctionnels, voir `memory.md`).
-  - `map/` (Sprint 003, nouveau) — `SimulatedMapBackground` (fond `map-night.svg` + marqueurs +
-    tracteur, **placeholder statique remplacé par le vrai Map Engine en Phase 04**),
-    `ResidenceMapMarker` (badge neutre / halo vert+maison si actif).
+  - `map/` — **carte réelle Mapbox** (Sprint 005-006, remplace `SimulatedMapBackground`
+    supprimé) : `MissionMapView.tsx` (MapView + Camera + style `dark-v11`, expose `recenter()`
+    via ref), `TractorMarker.tsx` (overlay écran fixe, ancre HANDOFF 24 % du bas), `ResidenceMarkerLayer.tsx`
+    (5 `PointAnnotation`), `SuggestedRouteLayer.tsx` (`ShapeSource`+`LineLayer` 2 passes),
+    `useSuggestedRoute.ts` (hook, repli ligne droite → upgrade Directions API). `ResidenceMapMarker.tsx`
+    mis à niveau (couleur par **rang** 1-5 selon `docs/05`, pas juste actif/neutre).
 - `src/domain/`
   - `status.ts` — `MissionItemState` (union) + `STATE_LABELS_FR`. Pur, sans React/I/O.
-- `src/engines/` — moteurs métier hors React (event-based, deps injectées). Vide (Sprint 006+) :
-  - `state-machine/` (décide) · `gps/` (détecte) · `map/` (affiche, Mapbox) ·
-    `voice/` (informe) · `sync/` (transmet) · `offline/` (continuité).
+- `src/engines/` — moteurs métier hors React (event-based, deps injectées) :
+  - `state-machine/` (décide) · `gps/` (détecte) · `voice/` (informe) · `sync/` (transmet) ·
+    `offline/` (continuité) — tous encore vides (sprints futurs).
+  - `map/mapCameraConfig.ts` (Sprint 005-006) — **seule partie du Map Engine réellement « sans
+    React »** : constantes caméra (pitch, durées, paliers de zoom), `zoomForState` (pur, testé),
+    `cameraPaddingTopFor` (dérive l'offset caméra pour l'ancre du tracteur). Le rendu Mapbox
+    lui-même vit dans `src/components/map/` (composants React) — tension architecturale avec
+    l'idéal « moteur sans React » de `docs/02`, notée dans `memory.md` (API `@rnmapbox/maps`
+    intrinsèquement basée sur des composants).
 - `src/context/` — pont React (MissionContext), mince. Vide (Sprint 007+).
 - `src/persistence/` — stockage local-first (schémas, repositories, transactions). Vide.
-- `src/integrations/` — adaptateurs externes (Supabase, Mapbox, TTS) derrière interfaces. Vide.
+- `src/integrations/`
+  - `mapbox/mapboxClient.ts` (Sprint 005-006) — point de contact unique du token public, seul
+    endroit hors `components/map/` qui importe `@rnmapbox/maps` directement.
+  - `mapbox/suggestedRoute.ts` — appel Directions API + repli ligne droite, pur/testable.
+  - Reste (Supabase, TTS) : vide, sprints futurs.
 - `src/services/` — orchestration (Authentication, Mission Loader…). Vide.
 - `src/hooks/` — hooks React minces (adaptateurs de moteurs/contexte). Vide.
 - `src/types/`
@@ -106,9 +126,15 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   `MissionScreen` sur plusieurs variantes (`IN_PROGRESS_MOCK`/`PROBLEM_MOCK`/`APPROACHING_MOCK` —
   Sprint 004, dont le groupement d'alertes) avec `SafeAreaProvider` + métriques synthétiques
   (voir piège dans `memory.md`).
+- `tests/mapEngine.test.ts` (Sprint 005-006) — `zoomForState`/`cameraPaddingTopFor` (purs) +
+  `fetchSuggestedRoute` (repli sans jeton/hors ligne/réponse non-OK, succès avec géométrie réelle).
 - `tests/__mocks__/svgMock.tsx` — stub Jest pour les imports `.svg`.
 - `tests/__mocks__/lucideMock.js` — stub Jest pour `lucide-react-native` (Proxy → icône no-op ;
   fichier `.js` volontairement, hors du typecheck TS — voir `tsconfig.include`).
+- `tests/__mocks__/rnmapboxMock.js` (Sprint 005-006) — stub Jest pour `@rnmapbox/maps` (vues
+  natives non rendables sous Jest) : `MapView`/`PointAnnotation`/`ShapeSource`/`LineLayer` en
+  simples `View` passthrough (rendent leurs enfants), `Camera` en `forwardRef` avec méthodes
+  no-op, `setAccessToken` no-op.
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)
@@ -121,4 +147,7 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   `expo-blur`, `react-native-svg` (+ `-transformer` en dev), `expo-splash-screen`,
   `lucide-react-native`.
 - Layout (Sprint 003) : `react-native-safe-area-context`.
-- À venir : `@rnmapbox/maps` (Phase 04), client Supabase, stockage local, TTS.
+- **Carte (Sprint 005-006)** : `@rnmapbox/maps` — **premier module natif du projet**, casse la
+  compatibilité Expo Go. Nécessite 2 jetons distincts (voir `.env.example` + `memory.md`) : public
+  réutilisé de `reca-operator`, secret Downloads:Read nouveau (build natif uniquement).
+- À venir : client Supabase, stockage local, TTS.
