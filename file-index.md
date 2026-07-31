@@ -18,8 +18,9 @@
 - `eslint.config.js` — flat config `eslint-config-expo` (+ ignores `.input`, natifs, config cjs).
 - `index.ts` — enregistre le composant racine (`registerRootComponent(App)`).
 - `App.tsx` — charge les polices Manrope (`useAppFonts`) puis affiche `MissionScreenPreview` dans
-  un `SafeAreaProvider` (Sprint 004, temporaire — voir `MissionScreenPreview.tsx`).
-  `ComponentGalleryScreen` reste dans le repo (référence/tests) mais n'est plus le point d'entrée.
+  `SafeAreaProvider` + `MissionProvider` (Sprint 007-008 — SQLite/`MissionContext`, temporaire
+  comme `MissionScreenPreview.tsx`). `ComponentGalleryScreen` reste dans le repo (référence/tests)
+  mais n'est plus le point d'entrée.
 - `metro.config.js` — Metro Expo par défaut + `react-native-svg-transformer` (import `.svg`
   officiels comme composants React).
 - `.gitignore` — Expo + natifs générés + `.input/` + `ecosystem.config.cjs`.
@@ -56,6 +57,9 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     `MOCK_MAP` (Sprint 005-006, boucle simulée près de Saint-Jérôme, QC).
   - `MissionScreenPreview.tsx` (Sprint 004, **dev-only**, jamais un écran produit) — sélecteur
     des 4 variantes, point d'entrée temporaire de `App.tsx` en attendant le vrai State Machine.
+    Depuis Sprint 007-008 : ligne de debug additive (`useMissionContext()` — session + nombre de
+    résidences chargées depuis SQLite), preuve d'intégration légère qui ne touche pas
+    `MissionScreen`.
   - `ComponentGalleryScreen.tsx` — galerie de tous les composants (mock data), référence de
     comparaison visuelle. N'est plus le point d'entrée depuis le Sprint 003.
 - `src/components/` — UI présentationnelle pure.
@@ -81,6 +85,10 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     mis à niveau (couleur par **rang** 1-5 selon `docs/05`, pas juste actif/neutre).
 - `src/domain/`
   - `status.ts` — `MissionItemState` (union) + `STATE_LABELS_FR`. Pur, sans React/I/O.
+  - `entities.ts` (Sprint 007-008) — `Mission`/`MissionItem`/`StateTransition`/`SyncOperation`/
+    `OperatorSession`/`Problem`/`MissionAlertRecord`, champs repris de `docs/03`/`docs/09`.
+  - `clock.ts` (Sprint 007-008) — `Clock`/`systemClock` (horloge injectable, `docs/10`).
+  - `id.ts` (Sprint 007-008) — `generateId()` (UUID via `expo-crypto`).
 - `src/engines/` — moteurs métier hors React (event-based, deps injectées) :
   - `state-machine/` (décide) · `gps/` (détecte) · `voice/` (informe) · `sync/` (transmet) ·
     `offline/` (continuité) — tous encore vides (sprints futurs).
@@ -90,8 +98,25 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     lui-même vit dans `src/components/map/` (composants React) — tension architecturale avec
     l'idéal « moteur sans React » de `docs/02`, notée dans `memory.md` (API `@rnmapbox/maps`
     intrinsèquement basée sur des composants).
-- `src/context/` — pont React (MissionContext), mince. Vide (Sprint 007+).
-- `src/persistence/` — stockage local-first (schémas, repositories, transactions). Vide.
+- `src/context/`
+  - `MissionContext.tsx` (Sprint 007-008) — `MissionProvider`/`useMissionContext()` : charge au
+    montage (migrations → seed démo si vide → session ouverte → lecture), expose `mission`/
+    `activeMissionItem`/`nextMissionItems`/`gpsState`/`synchronizationState`/`offlineState`
+    (3 derniers = **placeholders typés**, aucun moteur réel derrière). `deriveActiveAndNext`
+    (exporté, pur, testé) : résidence active + suivantes, indépendant de React/DB.
+- `src/persistence/` (Sprint 007-008, stockage local-first via **`expo-sqlite`**) :
+  - `types.ts` — `Db`/`SqlParam` : surface minimale injectée (get-all/get-by-id/upsert/delete +
+    transaction), jamais `expo-sqlite` importé ailleurs que dans `db.ts`.
+  - `db.ts` — connexion singleton (`getDb()`), import **dynamique** d'`expo-sqlite` (évite de
+    toucher le module natif rien qu'en important ce fichier — utile sous Jest).
+  - `migrations.ts` — création des 7 tables (`CREATE TABLE IF NOT EXISTS`, idempotent),
+    `schema_version`.
+  - `repositories/createRepository.ts` — factory générique CRUD (get-all/get-by-id/upsert/
+    delete), réutilisé par les 7 repositories spécifiques (`mission`, `missionItem`,
+    `stateTransition`, `syncOperation`, `operatorSession`, `problem`, `missionAlert`).
+  - `seedDemoMission.ts` — `seedDemoMissionIfEmpty` : Mission + 5 MissionItems de démo (même
+    narratif que `missionScreenMocks.ts` — « 224 rue Scott » etc., **pas encore reliés**),
+    idempotent, transaction atomique.
 - `src/integrations/`
   - `mapbox/mapboxClient.ts` (Sprint 005-006) — point de contact unique du token public, seul
     endroit hors `components/map/` qui importe `@rnmapbox/maps` directement.
@@ -128,6 +153,12 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   (voir piège dans `memory.md`).
 - `tests/mapEngine.test.ts` (Sprint 005-006) — `zoomForState`/`cameraPaddingTopFor` (purs) +
   `fetchSuggestedRoute` (repli sans jeton/hors ligne/réponse non-OK, succès avec géométrie réelle).
+- `tests/persistence.test.ts` (Sprint 007-008) — `createRepository` générique (CRUD sur une
+  entité factice), `seedDemoMissionIfEmpty` (peuplement + idempotence), `deriveActiveAndNext`
+  (résidence active + suivantes).
+- `tests/testFakeDb.ts` (Sprint 007-008) — faux `Db` en mémoire (pas un mock Jest auto — importé
+  directement dans les tests), assez de logique réelle (Map par table, upsert = overwrite) pour
+  tester le vrai comportement des repositories sans base ni module natif.
 - `tests/__mocks__/svgMock.tsx` — stub Jest pour les imports `.svg`.
 - `tests/__mocks__/lucideMock.js` — stub Jest pour `lucide-react-native` (Proxy → icône no-op ;
   fichier `.js` volontairement, hors du typecheck TS — voir `tsconfig.include`).
@@ -135,6 +166,9 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   natives non rendables sous Jest) : `MapView`/`PointAnnotation`/`ShapeSource`/`LineLayer` en
   simples `View` passthrough (rendent leurs enfants), `Camera` en `forwardRef` avec méthodes
   no-op, `setAccessToken` no-op.
+- `tests/__mocks__/expoCryptoMock.js` (Sprint 007-008) — stub Jest pour `expo-crypto` : le vrai
+  `randomUUID()` natif retourne silencieusement `undefined` sous Jest (aucune erreur) — ce mock
+  génère de vrais UUID v4 en JS pur.
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)
@@ -150,4 +184,6 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - **Carte (Sprint 005-006)** : `@rnmapbox/maps` — **premier module natif du projet**, casse la
   compatibilité Expo Go. Nécessite 2 jetons distincts (voir `.env.example` + `memory.md`) : public
   réutilisé de `reca-operator`, secret Downloads:Read nouveau (build natif uniquement).
-- À venir : client Supabase, stockage local, TTS.
+- **Stockage (Sprint 007-008)** : `expo-sqlite` (base locale, native mais ne casse rien de plus —
+  Expo Go déjà hors-jeu depuis Mapbox), `expo-crypto` (UUID — voir piège Jest dans `memory.md`).
+- À venir : client Supabase, TTS.

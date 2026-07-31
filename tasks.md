@@ -141,7 +141,34 @@
   `jest` 22/22 verts (dérivation de zoom, repli/succès de `fetchSuggestedRoute`, écran entier
   avec mock Jest de `@rnmapbox/maps`). **Non vérifié visuellement** : nécessite le dev build du
   propriétaire (jeton secret à créer, `expo prebuild`, Android Studio).
-- [ ] **Sprint 007-008 — Données locales & MissionContext** (Phase 05).
+- [x] **Sprint 007-008 — Données locales & MissionContext** (branche
+  `sprint-007-008-local-storage`, 2026-08-01). Couche locale (Phase 05) : **`expo-sqlite`**
+  (vraie base relationnelle, transactions natives — choix dicté par le vocabulaire même de la
+  Roadmap : « schémas », « migrations »). **7 tables** créées (`missions`, `mission_items`,
+  `state_transitions`, `sync_operations`, `operator_sessions`, `problems`, `mission_alerts`),
+  champs repris de `docs/03`/`docs/09` sans invention — seules `missions`/`mission_items`
+  reçoivent des données de démo ce sprint, les 5 autres existent vides pour les moteurs futurs.
+  **Surface SQL volontairement réduite** : chaque repository (`src/persistence/repositories/`)
+  n'utilise que get-all/get-by-id/upsert/delete + une transaction, via un **factory générique**
+  `createRepository<T>` (évite 7 implémentations quasi identiques à la main) ; toute logique
+  « intéressante » (résidence active, tri) reste en TypeScript pur au-dessus
+  (`deriveActiveAndNext`, testée isolément). **`MissionContext`** (`src/context/MissionContext.tsx`)
+  charge au montage (migrations → seed démo si vide → session ouverte → lecture), expose la forme
+  documentée par la Roadmap (`gpsState`/`synchronizationState`/`offlineState` en **placeholders
+  typés**, aucun moteur réel derrière). **Horloge injectable** (`src/domain/clock.ts`) et
+  **UUID** (`src/domain/id.ts`, `expo-crypto`) partout où un id/timestamp est créé.
+  **Décision de portée** : `MissionScreen` **reste alimenté par les mocks statiques existants**
+  (aucune régression) ; preuve d'intégration légère et additive dans `MissionScreenPreview`
+  (ligne de debug : heure de session + nombre de résidences chargées depuis SQLite). Le
+  remplacement complet des mocks par `MissionContext` reste un sprint futur explicite (voir
+  ci-dessous). Vérifié sur le VPS : `tsc`/`eslint` propres, `expo-doctor` 20/20, `jest` 27/27
+  verts (CRUD générique, seed idempotent, dérivation active/next) — via un **faux `Db` en
+  mémoire** (`tests/testFakeDb.ts`, pas de vraie base sous Jest, module natif). **Piège trouvé** :
+  `expo-crypto`'s `randomUUID()` retourne silencieusement `undefined` sous Jest (aucune erreur) →
+  a fait planter le seed de test (5 résidences écrasées en 1 seule, même id `undefined`) — corrigé
+  par un mock Jest dédié (`tests/__mocks__/expoCryptoMock.js`, vrai générateur UUID v4 en JS pur).
+  **Non vérifié visuellement** : la vraie preuve de survie au redémarrage nécessite de fermer/
+  rouvrir l'app sur le dev build du propriétaire (pas testable depuis ce VPS).
 - [ ] **Sprint 009-010 — State Machine** (Phase 06) : transitions + invariants + résidences
   adjacentes, avec tests obligatoires (succès/refus/doublon/récupération/hors-ligne/journal).
 - [ ] **Sprint 011-012 — GPS Engine** (Phase 07) : simulé puis réel.
@@ -153,13 +180,19 @@
 
 ## À vérifier
 
-- [ ] **Créer le jeton secret Mapbox** (`sk.*`, scope Downloads:Read, sur
-  `account.mapbox.com/access-tokens`) puis **builder l'app en dev build** : `.env.local` (2
-  jetons, voir `.env.example`) → `npx expo prebuild` → ouvrir `android/` dans Android Studio →
-  lancer sur l'appareil. **Expo Go ne fonctionne plus depuis le Sprint 005-006** (module natif
-  Mapbox). Comparer visuellement la carte (style sombre, tracteur fixe, marqueurs colorés par
-  rang, tracé bleu, recentrage) — aucune capture pixel de référence pour cette carte-ci, jugement
-  direct sur téléphone.
+- [x] **Jetons Mapbox créés** (2026-08-01) : `.env.local` sur ce VPS contient les 2 jetons
+  (public + secret Downloads:Read, voir `.input/mapbox_key` côté propriétaire). **Reste à faire
+  par le propriétaire** : recréer le même `.env.local` sur son **laptop** (là où `expo prebuild`/
+  Android Studio s'exécutent — ce fichier n'est jamais commité ni synchronisé par git).
+- [ ] **Builder l'app en dev build** sur le laptop : `npx expo prebuild` → ouvrir `android/` dans
+  Android Studio → lancer sur l'appareil. **Expo Go ne fonctionne plus depuis le Sprint 005-006**
+  (module natif Mapbox). Comparer visuellement la carte (style sombre, tracteur fixe, marqueurs
+  colorés par rang, tracé bleu, recentrage) — aucune capture pixel de référence pour cette
+  carte-ci, jugement direct sur téléphone.
+- [ ] **Vérifier la survie au redémarrage** (Sprint 007-008) : sur le dev build, confirmer via la
+  ligne de debug de `MissionScreenPreview` (session + nombre de résidences) que **fermer et
+  rouvrir l'app** (kill process) ne réinitialise pas les données SQLite — c'est le vrai test qui
+  compte, non reproductible depuis ce VPS.
 
 ## Suivi / limitations déclarées
 
@@ -173,3 +206,8 @@
   (Sprint 003). (Sprint 002)
 - **Rendu visuel non vérifié** sur le VPS (pas d'émulateur) : à valider sur laptop/téléphone
   contre `mock-encours.png`. (Sprint 002)
+- **`MissionScreen` ne consomme pas encore `MissionContext`** : il reste alimenté par
+  `missionScreenMocks.ts` (Sprint 004). Le remplacement complet est un **sprint futur explicite**
+  (pas fait en douce) — nécessitera de réconcilier le rang des marqueurs carte / les coordonnées
+  simulées / les alertes / tâches avec le schéma persistant réel. Candidat naturel : Sprint
+  009-010 (State Machine) ou un sprint dédié juste avant. (Sprint 007-008)

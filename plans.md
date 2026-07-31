@@ -6,10 +6,58 @@
 
 ## Plan actif
 
-- (aucun — prochain : Sprint 007-008 (Données locales & MissionContext), à planifier ici avant
-  de coder)
+- (aucun — prochain : Sprint 009-010 (State Machine), à planifier ici avant de coder)
 
 ## Archivé
+
+### ✅ Sprint 007-008 — Stockage local & MissionContext (2026-08-01)
+
+**Objectif** : couche locale (Phase 05) alimentant l'app sans dépendre du serveur — stockage
+persistant, schémas/migrations, `MissionContext`, repositories, horloge injectable, identifiants
+stables, récupération après redémarrage.
+
+**Contexte/décisions** : `expo-sqlite` retenu (vocabulaire Roadmap « schémas »/« migrations »
+pointe vers du SQL, pas du key-value). Surface SQL volontairement réduite (get-all/get-by-id/
+upsert/delete + 1 transaction) via un factory générique `createRepository<T>`, toute logique
+« intéressante » en TypeScript pur au-dessus. 7 tables créées (entités prioritaires de la
+Roadmap), seules `missions`/`mission_items` peuplées de données de démo ce sprint.
+**`MissionScreen` reste alimenté par les mocks statiques** (décision explicite, pas de
+réalignement risqué en un coup) — preuve d'intégration légère et additive dans
+`MissionScreenPreview` uniquement.
+
+**Fichiers concernés** : `src/domain/{entities,clock,id}.ts`, `src/persistence/{types,db,
+migrations,seedDemoMission}.ts`, `src/persistence/repositories/*.ts` (factory générique + 7
+repositories), `src/context/MissionContext.tsx`, `App.tsx` (`MissionProvider`),
+`MissionScreenPreview.tsx` (ligne de debug), tests (`persistence.test.ts`, `testFakeDb.ts`).
+
+**Étapes réalisées** : (1) branche `sprint-007-008-local-storage` ; (2) `expo-sqlite`/
+`expo-crypto` installés ; (3) vérification de l'API `expo-sqlite` (execAsync/runAsync/
+getAllAsync/getFirstAsync/withTransactionAsync) avant d'écrire le code ; (4) `Db` (interface
+minimale, injectée) + migrations (7 tables) ; (5) `createRepository` générique + 7 repositories
+spécifiques ; (6) `seedDemoMissionIfEmpty` (transaction atomique, idempotent) ; (7)
+`MissionContext` (chargement + dérivation `activeMissionItem`/`nextMissionItems`, placeholders
+GPS/Sync/Offline) ; (8) branchement `App.tsx` + ligne de debug `MissionScreenPreview` ; (9) faux
+`Db` en mémoire (`testFakeDb.ts`) + tests CRUD/seed/dérivation.
+
+**Risques rencontrés / traités** : le type `Db` avec `params` optionnel ne matchait pas les
+surcharges réelles de `SQLiteDatabase.runAsync` (params obligatoire) → rendu obligatoire partout ;
+`unknown[]` trop large pour `SQLiteBindValue` (`string|number|boolean|null`) → nouveau type
+`SqlParam[]` utilisé partout à la place. **Piège majeur trouvé par les tests** : `expo-crypto`'s
+`randomUUID()` retourne silencieusement `undefined` sous Jest (aucune erreur, aucun warning) →
+le seed de test perdait 4 résidences sur 5 (même id `undefined`, écrasement dans la map) —
+corrigé par un mock Jest dédié générant de vrais UUID v4 en JS pur.
+
+**Critères de réussite** : 7 tables créées, repositories testés (CRUD + idempotence du seed),
+`MissionContext` expose la forme documentée (avec placeholders), horloge/UUID injectés partout,
+intégration légère sans toucher `MissionScreen`, `tsc`/`eslint`/`jest` (27/27) verts — **tous
+atteints headless**. Survie réelle au redémarrage **en attente** (dev build du propriétaire).
+
+**Impact documentation** : aucun changement des `docs/` officiels ; décision de portée
+(MissionScreen non reconnecté) et piège `expo-crypto` consignés dans `memory.md` + `tasks.md`
+(backlog explicite pour le sprint de reconnexion futur).
+
+**Limite** : test de survie au redémarrage non reproductible sur ce VPS (nécessite kill/reopen
+de l'app sur un vrai appareil).
 
 ### ✅ Sprint 005-006 — Map Engine (2026-07-31)
 

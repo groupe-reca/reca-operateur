@@ -264,6 +264,59 @@
     restreint à `["jest","react"]`) → utiliser **`globalThis.fetch`** (standard ECMAScript, pas de
     dépendance de types supplémentaire, de toute façon plus portable que `global`).
 
+## Stockage local & MissionContext (Sprint 007-008)
+
+- **Stockage = `expo-sqlite`** (décision, pas juste une option parmi d'autres) : le vocabulaire
+  même de la Roadmap Phase 05 (« schémas », « migrations », entités liées par `mission_id`/
+  `mission_item_id`) pointe vers une vraie base relationnelle avec transactions natives, pas du
+  key-value (AsyncStorage/MMKV écartés pour cette raison).
+- **Surface SQL volontairement minuscule** : chaque repository (`src/persistence/repositories/`)
+  n'utilise que get-all/get-by-id/upsert/delete + une transaction — jamais de `WHERE`/`JOIN`
+  complexe. Toute logique « intéressante » (résidence active, tri par ordre) vit en **TypeScript
+  pur** au-dessus (`deriveActiveAndNext` dans `MissionContext.tsx`, exporté et testé isolément).
+  **Ne pas** ajouter de requêtes SQL complexes plus tard sans très bonne raison — ça casserait le
+  faux `Db` de test (`tests/testFakeDb.ts`) qui ne fait que du pattern-matching de regex simple,
+  pas un vrai moteur SQL.
+- **`Db` = interface minimale injectée** (`src/persistence/types.ts`), jamais `expo-sqlite`
+  importé directement en dehors de `src/persistence/db.ts`. Permet de tester les repositories/
+  `MissionContext` avec un faux en mémoire, sans module natif ni vraie base sous Jest (même
+  contrainte que Mapbox — voir plus haut). **`SqlParam` (`string|number|boolean|null`)**, pas
+  `unknown[]` : le vrai `SQLiteDatabase.runAsync` de `expo-sqlite` n'accepte que
+  `SQLiteBindValue[]`, plus étroit — `unknown[]` n'aurait pas satisfait la vraie signature.
+  `params` est **obligatoire** (pas optionnel) dans `Db` pour la même raison (les surcharges
+  réelles n'ont pas de forme « zéro argument tableau »).
+- **`db.ts` importe `expo-sqlite` dynamiquement** (`import('expo-sqlite')` dans le corps de
+  `getDb()`, pas en haut du fichier) — pour que le simple fait d'importer `db.ts` (ex.
+  transitivement via `MissionContext`) ne touche jamais le module natif. Les tests injectent leur
+  propre faux `Db` via la prop `getDbOverride` de `MissionProvider` et n'appellent jamais
+  `getDb()` du tout.
+- **7 tables créées, seules 2 peuplées ce sprint** : `missions`/`mission_items` reçoivent les
+  données de démo (`seedDemoMissionIfEmpty`, idempotent, transaction atomique) ; `state_transitions`/
+  `sync_operations`/`operator_sessions`/`problems`/`mission_alerts` existent vides, prêtes pour
+  les moteurs futurs (State Machine Sprint 009-010, Sync 013-014) — normal à ce stade, pas un
+  oubli.
+- **`MissionContext` reste en lecture** : charge (migrations → seed si vide → session ouverte →
+  lecture) et expose, **aucune API de commande/mutation** encore. `gpsState`/
+  `synchronizationState`/`offlineState` (forme exacte donnée par l'exemple `MissionContext` de la
+  Roadmap) sont des **placeholders typés** sans moteur réel derrière — ne pas les faire évoluer
+  avant que les moteurs correspondants existent réellement (Sprint 011-012/013-014/015).
+- **Décision de portée — `MissionScreen` non reconnecté à `MissionContext` ce sprint** :
+  volontaire, pas un oubli. `MissionScreen` continue de lire `missionScreenMocks.ts`
+  (Sprint 004). La preuve d'intégration reste **additive et légère**, confinée à
+  `MissionScreenPreview` (ligne de debug : session + nombre de résidences). Le remplacement
+  complet est backlogué explicitement dans `tasks.md` (nécessitera de réconcilier rang carte/
+  coordonnées/alertes/tâches avec le schéma persistant — pas fait à la légère).
+- **Horloge injectable partout où un timestamp est écrit** (`src/domain/clock.ts`,
+  `Clock`/`systemClock`) — jamais `new Date()` en dur dans la logique de seed/session.
+- **Piège majeur — `expo-crypto`'s `randomUUID()` retourne silencieusement `undefined` sous
+  Jest** (aucune erreur, aucun warning — le module natif est mocké en no-op par `jest-expo`).
+  Conséquence concrète rencontrée : le seed de test perdait 4 résidences sur 5 (toutes avec le
+  même id `undefined`, écrasement successif dans la table en mémoire — symptôme qui a permis de
+  détecter le bug). **Fixé** par un mock Jest dédié (`tests/__mocks__/expoCryptoMock.js`, vrai
+  générateur UUID v4 en JS pur). **Réflexe à garder** : si un test avec des entités générées par
+  `generateId()` montre des doublons/écrasements inattendus, vérifier D'ABORD que `randomUUID()`
+  n'est pas mocké en `undefined` silencieux avant de chercher ailleurs.
+
 ## Contraintes à ne jamais oublier
 
 - L'app doit **fonctionner hors ligne** (mission complète sans réseau — critère de production).
