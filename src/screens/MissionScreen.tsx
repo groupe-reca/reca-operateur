@@ -1,40 +1,38 @@
-import { CloudSnow, Crosshair, Footprints, Layers, Minus, Plus, Route, Tractor } from 'lucide-react-native';
+import { CloudSnow, Crosshair, Layers, Minus, Plus } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomTabBar } from '@/components/controls/BottomTabBar';
 import { FloatingActionButton } from '@/components/controls/FloatingActionButton';
+import { AlertCard } from '@/components/mission/AlertCard';
 import { AppHeader } from '@/components/mission/AppHeader';
-import { CurrentResidenceProgressCard, type ProgressStep } from '@/components/mission/CurrentResidenceProgressCard';
+import { CurrentResidenceProgressCard } from '@/components/mission/CurrentResidenceProgressCard';
 import { CurrentResidenceSheet } from '@/components/mission/CurrentResidenceSheet';
 import { MissionCard } from '@/components/mission/MissionCard';
-import { ResidenceTasksCard, type ResidenceTask } from '@/components/mission/ResidenceTasksCard';
+import { OfflineIndicator } from '@/components/mission/OfflineIndicator';
+import { ProblemStateCard } from '@/components/mission/ProblemStateCard';
+import { ResidenceTasksCard } from '@/components/mission/ResidenceTasksCard';
 import { SimulatedMapBackground } from '@/components/map/SimulatedMapBackground';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Icon } from '@/components/ui/Icon';
+import { Pill } from '@/components/ui/Pill';
 import { Txt } from '@/components/ui/Txt';
 import { colors, screenMargin, spacing } from '@/config/theme';
 
-// Sprint 003 — "Écran maître EN COURS" assembled from Sprint 002's components,
-// fed by the exact example data from docs/11-Roadmap.md Phase 02 / mock-encours.png.
-// Fixed layout (no ScrollView): the map fills the remaining space between a
-// pinned header block and a pinned bottom block (docs/01: "aucun écran blanc,
-// seulement des panneaux"). Static/simulated data only — no engines yet.
-const PROGRESS_STEPS: ProgressStep[] = [
-  { kind: 'done', label: 'EN ROUTE' },
-  { kind: 'done', label: 'EN APPROCHE' },
-  { kind: 'current', n: 3, label: 'EN COURS' },
-  { kind: 'upcoming', n: 4, label: 'À venir' },
-  { kind: 'upcoming', n: 5, label: 'À venir' },
-];
+import type { MissionScreenState } from './missionScreenState';
 
-const TASKS: ResidenceTask[] = [
-  { icon: Tractor, label: 'Déneigement', status: 'Entrée principale' },
-  { icon: Route, label: 'Allée', status: 'Complété' },
-  { icon: Footprints, label: 'Trottoir', status: 'Complété' },
-];
+// Sprint 003/004 — "Écran maître" assembled from Sprint 002's components,
+// data-driven by a single MissionScreenState (Phase 03: the 4 operational
+// variants are just different mock objects rendered by this exact screen —
+// "même structure de composants", docs/11-Roadmap.md). Fixed layout (no
+// ScrollView): the map fills the remaining space between a pinned header
+// block and a pinned bottom block (docs/01: "aucun écran blanc, seulement
+// des panneaux"). Static/simulated data only — no engines yet.
+type Props = {
+  state: MissionScreenState;
+};
 
-export function MissionScreen() {
+export function MissionScreen({ state }: Props) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -47,24 +45,42 @@ export function MissionScreen() {
       >
         <AppHeader notifications={2} />
         <MissionCard
-          missionId="24-01-15"
-          secteur="Saint-Jérôme"
-          index={3}
-          total={28}
-          progressPct={10}
-          missionSeconds={1112}
-          syncState="synced"
-          etaLabel="1h 45 min (est.)"
+          missionId={state.mission.missionId}
+          secteur={state.mission.secteur}
+          index={state.mission.index}
+          total={state.mission.total}
+          progressPct={state.mission.progressPct}
+          missionSeconds={state.mission.missionSeconds}
+          syncState={state.mission.syncState}
+          etaLabel={state.mission.totalEtaLabel}
         />
+        {state.offline ? <OfflineIndicator pendingChanges={state.offline.pendingOperations} /> : null}
+        <AlertsRow alerts={state.alerts} />
       </View>
 
       <View style={styles.mapArea}>
         <SimulatedMapBackground />
 
-        <View
-          style={[styles.leftColumn, { left: insets.left + screenMargin, top: spacing.lg }]}
-        >
-          <CurrentResidenceProgressCard stateLabel="EN COURS" address="224 rue Scott" steps={PROGRESS_STEPS} onProblem={() => {}} />
+        <View style={[styles.leftColumn, { left: insets.left + screenMargin, top: spacing.lg }]}>
+          {state.activeState === 'PROBLEM' && state.problem ? (
+            <ProblemStateCard
+              address={state.address}
+              problemType={state.problem.type}
+              note={state.problem.note}
+              frozenSeconds={state.problem.frozenSeconds}
+              onNext={() => {}}
+              onResumeLater={() => {}}
+            />
+          ) : (
+            <CurrentResidenceProgressCard
+              stateLabel={state.stateLabel}
+              timerSeconds={state.timerSeconds}
+              color={state.color}
+              address={state.address}
+              steps={state.progressSteps ?? []}
+              onProblem={() => {}}
+            />
+          )}
           <FloatingActionButton icon={Crosshair} label="Recentrer" onPress={() => {}} />
           <GlassCard level="chip" radius="lg" style={styles.weatherPill}>
             <Icon icon={CloudSnow} color={colors.textSecondary} size={20} />
@@ -84,12 +100,18 @@ export function MissionScreen() {
             <FloatingActionButton icon={Plus} size={44} onPress={() => {}} accessibilityLabel="Zoom avant" />
             <FloatingActionButton icon={Minus} size={44} onPress={() => {}} accessibilityLabel="Zoom arrière" />
           </View>
-          <ResidenceTasksCard stateLabel="EN COURS" tasks={TASKS} estimatedTime="12:00" />
+          {state.tasks ? (
+            <ResidenceTasksCard stateLabel={state.stateLabel} tasks={state.tasks} estimatedTime={state.estimatedTaskTime ?? ''} />
+          ) : null}
         </View>
       </View>
 
       <View style={[styles.bottomSection, { paddingLeft: insets.left + screenMargin, paddingRight: insets.right + screenMargin }]}>
-        <CurrentResidenceSheet address="224 rue Scott" distanceLabel="1,2 km" etaLabel="3 min" />
+        <CurrentResidenceSheet
+          address={state.address}
+          distanceLabel={state.residenceDistanceLabel}
+          etaLabel={state.residenceEtaLabel}
+        />
         <View style={{ paddingBottom: insets.bottom }}>
           <BottomTabBar active="carte" alertsCount={2} voiceActive onVoicePress={() => {}} />
         </View>
@@ -98,9 +120,32 @@ export function MissionScreen() {
   );
 }
 
+// HANDOFF §5: 1 alert shown in full + a "+N instructions" chip for the rest —
+// never a stack of N full cards.
+function AlertsRow({ alerts }: { alerts: MissionScreenState['alerts'] }) {
+  if (alerts.length === 0) {
+    return null;
+  }
+  const [primary, ...rest] = alerts;
+  if (!primary) {
+    return null;
+  }
+  return (
+    <View style={styles.alertsRow}>
+      <AlertCard level={primary.level} icon={primary.icon} text={primary.text} />
+      {rest.length > 0 ? (
+        <Pill>
+          <Txt variant="meta" color={colors.textSecondary}>{`+${rest.length} instructions`}</Txt>
+        </Pill>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   topSection: { gap: spacing.md, paddingBottom: spacing.md },
+  alertsRow: { gap: spacing.sm },
   mapArea: { flex: 1 },
   leftColumn: { position: 'absolute', gap: spacing.md, width: 220 },
   rightColumn: { position: 'absolute', alignItems: 'flex-end', gap: spacing.md },

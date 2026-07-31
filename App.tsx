@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useAppFonts } from '@/config/theme';
-import { MissionScreen } from '@/screens/MissionScreen';
+import { MissionScreenPreview } from '@/screens/MissionScreenPreview';
 
 // Keep the splash visible until Manrope is loaded (avoids a font flash).
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -26,13 +26,14 @@ export default function App() {
     return null;
   }
 
-  // Sprint 003: the assembled Mission Screen (EN COURS) is now the entry
-  // point. ComponentGalleryScreen (Sprint 002) stays in the repo for
-  // reference/tests but is no longer wired here.
+  // Sprint 004: MissionScreenPreview (dev-only switcher over the 4
+  // operational variants) is temporarily the entry point, same pattern as
+  // Sprint 002's ComponentGalleryScreen. Swapped back to a single
+  // MissionScreen fed by the real engine once the State Machine exists.
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <MissionScreen />
+      <MissionScreenPreview />
     </SafeAreaProvider>
   );
 }

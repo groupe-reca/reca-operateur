@@ -1,4 +1,4 @@
-import { Check, CircleDashed } from 'lucide-react-native';
+import { Check } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
 import { colors, fontFamily, radii, spacing } from '@/config/theme';
@@ -7,33 +7,42 @@ import { ProblemButton } from '../controls/ProblemButton';
 import { GlassCard } from '../ui/GlassCard';
 import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Txt';
+import { PhaseTimer } from './PhaseTimer';
 
-// A step is either already completed (checkmark), the current one
-// (highlighted, numbered), or one of the next residences shown for context
-// (numbered, dimmed "À venir"). Purely presentational — no state logic.
+// A step is either already completed (checkmark, always "success" green —
+// a past phase stays a success regardless of the active state's colour), the
+// current one (highlighted in the active state's functional colour), or one
+// of the next residences shown for context (numbered, dimmed "À venir").
+// Purely presentational — no state logic.
 export type ProgressStep =
   | { kind: 'done'; label: string }
   | { kind: 'current'; n: number; label: string }
   | { kind: 'upcoming'; n: number; label: string };
 
 type Props = {
-  stateLabel: string; // e.g. "EN COURS"
+  stateLabel: string; // e.g. "EN COURS" — also the PhaseTimer's label
+  timerSeconds: number;
+  // Functional colour of the active state (docs/11 Phase 03: bleu EN ROUTE,
+  // ambre EN APPROCHE, vert EN COURS). Drives the timer and the "current" step.
+  color: string;
   address: string;
   steps: ProgressStep[];
   onProblem?: () => void;
 };
 
-// Floating left column: current phase + address + a compact journey/next-up
+// Floating left column: phase timer + address + a compact journey/next-up
 // checklist + the permanent problem action.
-export function CurrentResidenceProgressCard({ stateLabel, address, steps, onProblem }: Props) {
+export function CurrentResidenceProgressCard({
+  stateLabel,
+  timerSeconds,
+  color,
+  address,
+  steps,
+  onProblem,
+}: Props) {
   return (
     <GlassCard level="panel" radius="lg" style={styles.card}>
-      <View style={styles.header}>
-        <Txt variant="labelCaps" color={colors.success}>
-          {stateLabel}
-        </Txt>
-        <Icon icon={CircleDashed} color={colors.success} size={16} />
-      </View>
+      <PhaseTimer label={stateLabel} seconds={timerSeconds} color={color} />
       <Txt variant="address" numberOfLines={1}>
         {address}
       </Txt>
@@ -50,7 +59,7 @@ export function CurrentResidenceProgressCard({ stateLabel, address, steps, onPro
                 style={[
                   styles.numberBadge,
                   step.kind === 'current'
-                    ? { backgroundColor: colors.success, borderColor: colors.success }
+                    ? { backgroundColor: color, borderColor: color }
                     : { borderColor: 'rgba(255,255,255,0.3)' },
                 ]}
               >
@@ -66,7 +75,7 @@ export function CurrentResidenceProgressCard({ stateLabel, address, steps, onPro
               variant={step.kind === 'current' ? 'cardTitle' : 'body'}
               color={
                 step.kind === 'current'
-                  ? colors.success
+                  ? color
                   : step.kind === 'upcoming'
                     ? colors.textSecondary
                     : colors.textPrimary
@@ -87,7 +96,6 @@ const BADGE = 24;
 
 const styles = StyleSheet.create({
   card: { padding: spacing.lg, gap: spacing.md },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   steps: { gap: spacing.sm + 2 },
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   doneBadge: {
