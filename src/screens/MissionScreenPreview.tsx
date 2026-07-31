@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { Txt } from '@/components/ui/Txt';
 import { colors, radii, spacing } from '@/config/theme';
+import { useMissionContext } from '@/context/MissionContext';
 
 import { MissionScreen } from './MissionScreen';
 import { APPROACHING_MOCK, EN_ROUTE_MOCK, IN_PROGRESS_MOCK, PROBLEM_MOCK } from './missionScreenMocks';
@@ -28,6 +29,8 @@ const VARIANTS: { key: string; label: string; state: MissionScreenState }[] = [
 export function MissionScreenPreview() {
   const [selected, setSelected] = useState(0);
   const current = VARIANTS[selected] ?? VARIANTS[0];
+  const { loading, session, mission, activeMissionItem, nextMissionItems } = useMissionContext();
+  const itemCount = nextMissionItems.length + (activeMissionItem ? 1 : 0);
   if (!current) {
     return null;
   }
@@ -50,8 +53,22 @@ export function MissionScreenPreview() {
           </PressableScale>
         ))}
       </View>
+      {/* Sprint 007-008 proof of persistence — dev-only, additive, does not
+          feed MissionScreen itself (see memory.md scope decision). */}
+      <View style={styles.debugBanner}>
+        <Txt variant="meta" color={colors.textSecondary}>
+          {loading
+            ? 'SQLite : chargement…'
+            : `SQLite : session ${session ? formatTime(session.openedAt) : '—'} · ${mission ? '1 mission' : '0 mission'} · ${itemCount} résidences`}
+        </Txt>
+      </View>
     </View>
   );
+}
+
+function formatTime(isoDate: string): string {
+  const date = new Date(isoDate);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 const styles = StyleSheet.create({
@@ -75,4 +92,13 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
   },
   chipActive: { backgroundColor: colors.warning },
+  debugBanner: {
+    position: 'absolute',
+    bottom: 76,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: radii.pill,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm + 2,
+  },
 });

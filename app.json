@@ -29,7 +29,8 @@
       "expo-font",
       "expo-splash-screen",
       "expo-asset",
-      "@rnmapbox/maps"
+      "@rnmapbox/maps",
+      "expo-sqlite"
     ]
   }
 }
