@@ -1,4 +1,5 @@
 import { CloudSnow, Crosshair, Layers, Minus, Plus } from 'lucide-react-native';
+import { useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,7 +13,7 @@ import { MissionCard } from '@/components/mission/MissionCard';
 import { OfflineIndicator } from '@/components/mission/OfflineIndicator';
 import { ProblemStateCard } from '@/components/mission/ProblemStateCard';
 import { ResidenceTasksCard } from '@/components/mission/ResidenceTasksCard';
-import { SimulatedMapBackground } from '@/components/map/SimulatedMapBackground';
+import { MissionMapView, type MissionMapViewHandle } from '@/components/map/MissionMapView';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Icon } from '@/components/ui/Icon';
 import { Pill } from '@/components/ui/Pill';
@@ -21,19 +22,22 @@ import { colors, screenMargin, spacing } from '@/config/theme';
 
 import type { MissionScreenState } from './missionScreenState';
 
-// Sprint 003/004 — "Écran maître" assembled from Sprint 002's components,
-// data-driven by a single MissionScreenState (Phase 03: the 4 operational
-// variants are just different mock objects rendered by this exact screen —
-// "même structure de composants", docs/11-Roadmap.md). Fixed layout (no
-// ScrollView): the map fills the remaining space between a pinned header
-// block and a pinned bottom block (docs/01: "aucun écran blanc, seulement
-// des panneaux"). Static/simulated data only — no engines yet.
+// Sprint 003/004/005-006 — "Écran maître" assembled from Sprint 002's
+// components, data-driven by a single MissionScreenState (Phase 03: the 4
+// operational variants are just different mock objects rendered by this
+// exact screen — "même structure de composants", docs/11-Roadmap.md). Fixed
+// layout (no ScrollView): the map fills the remaining space between a
+// pinned header block and a pinned bottom block (docs/01: "aucun écran
+// blanc, seulement des panneaux"). Position/route are still simulated
+// (Phase 04 Roadmap: "ne pas connecter immédiatement le GPS réel").
 type Props = {
   state: MissionScreenState;
 };
 
 export function MissionScreen({ state }: Props) {
   const insets = useSafeAreaInsets();
+  const mapRef = useRef<MissionMapViewHandle>(null);
+  const handleRecenter = () => mapRef.current?.recenter();
 
   return (
     <View style={styles.root}>
@@ -59,7 +63,13 @@ export function MissionScreen({ state }: Props) {
       </View>
 
       <View style={styles.mapArea}>
-        <SimulatedMapBackground />
+        <MissionMapView
+          ref={mapRef}
+          position={state.map.position}
+          residences={state.map.residences}
+          routeWaypoints={state.map.routeWaypoints}
+          activeState={state.activeState}
+        />
 
         <View style={[styles.leftColumn, { left: insets.left + screenMargin, top: spacing.lg }]}>
           {state.activeState === 'PROBLEM' && state.problem ? (
@@ -81,7 +91,7 @@ export function MissionScreen({ state }: Props) {
               onProblem={() => {}}
             />
           )}
-          <FloatingActionButton icon={Crosshair} label="Recentrer" onPress={() => {}} />
+          <FloatingActionButton icon={Crosshair} label="Recentrer" onPress={handleRecenter} />
           <GlassCard level="chip" radius="lg" style={styles.weatherPill}>
             <Icon icon={CloudSnow} color={colors.textSecondary} size={20} />
             <View>
@@ -95,7 +105,7 @@ export function MissionScreen({ state }: Props) {
 
         <View style={[styles.rightColumn, { right: insets.right + screenMargin, top: spacing.lg }]}>
           <View style={styles.mapControls}>
-            <FloatingActionButton icon={Crosshair} size={44} onPress={() => {}} accessibilityLabel="Recentrer" />
+            <FloatingActionButton icon={Crosshair} size={44} onPress={handleRecenter} accessibilityLabel="Recentrer" />
             <FloatingActionButton icon={Layers} size={44} onPress={() => {}} accessibilityLabel="Couches" />
             <FloatingActionButton icon={Plus} size={44} onPress={() => {}} accessibilityLabel="Zoom avant" />
             <FloatingActionButton icon={Minus} size={44} onPress={() => {}} accessibilityLabel="Zoom arrière" />

@@ -6,21 +6,37 @@ import { colors, fontFamily, radii } from '@/config/theme';
 import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Txt';
 
+// Rank among the 5 residences shown on the map (1 = active), independent
+// from the residence's absolute mission index shown elsewhere (e.g. "3/28"
+// in MissionCard/CurrentResidenceProgressCard) — docs/05-Map-Engine.md only
+// ever talks about relative rank for marker colour, never the mission index.
+export type ResidenceRank = 1 | 2 | 3 | 4 | 5;
+
 type Props = {
   n: number;
-  // Active = current residence: green halo + house icon (no number).
-  // Sprint 003 fidelity to mock-encours.png only distinguishes active vs.
-  // neutral — the future real Map Engine's green/blue/gray rank palette
-  // (docs/05-Map-Engine.md) applies once Mapbox lands (Phase 04).
-  active?: boolean;
+  rank: ResidenceRank;
 };
 
-export function ResidenceMapMarker({ n, active = false }: Props) {
-  if (active) {
+const RANK_COLOR: Record<ResidenceRank, string> = {
+  1: colors.success,
+  2: colors.navigation,
+  3: colors.navigation,
+  4: colors.textSecondary,
+  5: colors.textSecondary,
+};
+
+// Colour-by-rank map marker (docs/05-Map-Engine.md "Apparence des
+// résidences") : rank 1 (active) = grand marqueur vert + halo + icône
+// maison ; 2-3 = bleu ; 4-5 = gris. Only rank 1 gets the halo/house
+// treatment ("grand marqueur") — the rest are plain numbered circles.
+export function ResidenceMapMarker({ n, rank }: Props) {
+  const color = RANK_COLOR[rank];
+
+  if (rank === 1) {
     return (
       <View style={styles.haloWrap}>
-        <View style={styles.halo} />
-        <View style={styles.activeDot}>
+        <View style={[styles.halo, { backgroundColor: `${color}30`, borderColor: `${color}66` }]} />
+        <View style={[styles.activeDot, { backgroundColor: color }]}>
           <Icon icon={Home} color={colors.bg} size={20} strokeWidth={2.5} />
         </View>
       </View>
@@ -28,8 +44,8 @@ export function ResidenceMapMarker({ n, active = false }: Props) {
   }
 
   return (
-    <View style={styles.neutralDot}>
-      <Txt style={styles.neutralText}>{String(n)}</Txt>
+    <View style={[styles.neutralDot, { borderColor: color }]}>
+      <Txt style={[styles.neutralText, { color }]}>{String(n)}</Txt>
     </View>
   );
 }
@@ -49,15 +65,12 @@ const styles = StyleSheet.create({
     width: HALO,
     height: HALO,
     borderRadius: HALO / 2,
-    backgroundColor: 'rgba(74,222,128,0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.4)',
   },
   activeDot: {
     width: DOT,
     height: DOT,
     borderRadius: DOT / 2,
-    backgroundColor: colors.success,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -67,13 +80,11 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'rgba(21,28,46,0.9)',
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   neutralText: {
     fontFamily: fontFamily.extrabold,
     fontSize: 14,
-    color: colors.textPrimary,
   },
 });

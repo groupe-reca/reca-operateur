@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { BottomTabBar } from '@/components/controls/BottomTabBar';
@@ -19,12 +19,18 @@ const TEST_SAFE_AREA_METRICS = {
   insets: { top: 47, left: 0, right: 0, bottom: 34 },
 };
 
-function renderScreen(state: Parameters<typeof MissionScreen>[0]['state']) {
-  return render(
+// MissionMapView's useSuggestedRoute always schedules a microtask (even for
+// the synchronous no-token fallback, since fetchSuggestedRoute is declared
+// async) — flushing it here avoids an "update not wrapped in act()" warning
+// on every test that renders MissionScreen.
+async function renderScreen(state: Parameters<typeof MissionScreen>[0]['state']) {
+  const utils = render(
     <SafeAreaProvider initialMetrics={TEST_SAFE_AREA_METRICS}>
       <MissionScreen state={state} />
     </SafeAreaProvider>
   );
+  await act(async () => {});
+  return utils;
 }
 
 describe('formatElapsedWithHours', () => {
@@ -91,8 +97,8 @@ describe('BottomTabBar', () => {
 });
 
 describe('MissionScreen', () => {
-  it('renders the IN_PROGRESS variant with tasks and the offline overlay', () => {
-    const { getByText, getAllByText } = renderScreen(IN_PROGRESS_MOCK);
+  it('renders the IN_PROGRESS variant with tasks and the offline overlay', async () => {
+    const { getByText, getAllByText } = await renderScreen(IN_PROGRESS_MOCK);
     expect(getByText('Mission 24-01-15')).toBeTruthy();
     expect(getAllByText('224', { exact: false }).length).toBeGreaterThan(0);
     expect(getByText('Déneigement')).toBeTruthy();
@@ -100,15 +106,15 @@ describe('MissionScreen', () => {
     expect(getByText('Hors ligne · 3 en attente')).toBeTruthy();
   });
 
-  it('renders the PROBLEM variant with the problem card instead of the checklist', () => {
-    const { getByText, queryByText } = renderScreen(PROBLEM_MOCK);
+  it('renders the PROBLEM variant with the problem card instead of the checklist', async () => {
+    const { getByText, queryByText } = await renderScreen(PROBLEM_MOCK);
     expect(getByText('Accès bloqué')).toBeTruthy();
     // No task panel while a problem is active (only shown while IN_PROGRESS).
     expect(queryByText('Déneigement')).toBeNull();
   });
 
-  it('groups alerts as one full card plus a "+N instructions" chip', () => {
-    const { getByText } = renderScreen(APPROACHING_MOCK);
+  it('groups alerts as one full card plus a "+N instructions" chip', async () => {
+    const { getByText } = await renderScreen(APPROACHING_MOCK);
     expect(getByText('Plate-bande au fond')).toBeTruthy();
     expect(getByText('+2 instructions')).toBeTruthy();
   });

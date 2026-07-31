@@ -4,6 +4,9 @@ import type { LucideProps } from 'lucide-react-native';
 import type { AlertLevel } from '@/components/mission/AlertCard';
 import type { ProgressStep } from '@/components/mission/CurrentResidenceProgressCard';
 import type { ResidenceTask } from '@/components/mission/ResidenceTasksCard';
+import type { MapResidence } from '@/components/map/ResidenceMarkerLayer';
+import type { MapPosition } from '@/components/map/MissionMapView';
+import type { LngLat } from '@/integrations/mapbox/suggestedRoute';
 import type { SyncState } from '@/types/sync';
 
 // Sprint 004 (Phase 03): MissionScreen is data-driven by this single shape so
@@ -67,5 +70,15 @@ export type MissionScreenState = {
   // not a 5th exclusive variant (docs/01 "Mode hors ligne").
   offline?: {
     pendingOperations: number;
+  };
+
+  // Phase 04 (Sprint 005-006): simulated GPS position + the 5 residences
+  // shown on the map. Independent from `mission.index`/`progressSteps`'
+  // numbering (docs/05 ranks markers 1-5 by relative order, never by the
+  // mission's absolute residence index) — see memory.md.
+  map: {
+    position: MapPosition;
+    residences: MapResidence[];
+    routeWaypoints: LngLat[];
   };
 };

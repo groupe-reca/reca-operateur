@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",
+    "@rnmapbox/maps": "^10.3.5",
     "expo": "~57.0.9",
     "expo-asset": "~57.0.8",
     "expo-blur": "~57.0.2",
@@ -45,7 +46,8 @@
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1",
       "\\.svg$": "<rootDir>/tests/__mocks__/svgMock.tsx",
-      "^lucide-react-native$": "<rootDir>/tests/__mocks__/lucideMock.js"
+      "^lucide-react-native$": "<rootDir>/tests/__mocks__/lucideMock.js",
+      "^@rnmapbox/maps$": "<rootDir>/tests/__mocks__/rnmapboxMock.js"
     },
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/.*|native-base|react-native-svg|lucide-react-native))"

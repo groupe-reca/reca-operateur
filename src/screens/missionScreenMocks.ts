@@ -1,5 +1,6 @@
 import { DoorClosed, Footprints, Mail, Route, Tractor, TriangleAlert } from 'lucide-react-native';
 
+import type { MapResidence } from '@/components/map/ResidenceMarkerLayer';
 import { colors } from '@/config/theme';
 
 import type { MissionScreenState } from './missionScreenState';
@@ -20,6 +21,31 @@ const BASE_MISSION = {
   totalEtaLabel: '1h 45 min (est.)',
 };
 
+// Sprint 005-006 (Phase 04): simulated GPS scene — a small residential loop
+// near Saint-Jérôme, QC, matching the "224 rue Scott" narrative. Illustrative
+// coordinates only (Roadmap Phase 04: "commencer avec des coordonnées
+// simulées, ne pas connecter immédiatement le GPS réel"), shared by all 4
+// operational-variant mocks — only the zoom level (derived from
+// `activeState`) actually changes what the map shows.
+const MOCK_MAP_RESIDENCES: MapResidence[] = [
+  { n: 3, rank: 1, coordinate: [-74.0037, 45.7809] },
+  { n: 4, rank: 2, coordinate: [-74.0032, 45.7815] },
+  { n: 5, rank: 3, coordinate: [-74.0041, 45.7821] },
+  { n: 6, rank: 4, coordinate: [-74.005, 45.7827] },
+  { n: 7, rank: 5, coordinate: [-74.0044, 45.7833] },
+];
+
+const MOCK_TRACTOR_POSITION = { longitude: -74.0035, latitude: 45.7803, heading: 15 };
+
+const MOCK_MAP: MissionScreenState['map'] = {
+  position: MOCK_TRACTOR_POSITION,
+  residences: MOCK_MAP_RESIDENCES,
+  routeWaypoints: [
+    [MOCK_TRACTOR_POSITION.longitude, MOCK_TRACTOR_POSITION.latitude],
+    ...MOCK_MAP_RESIDENCES.map((residence) => residence.coordinate),
+  ],
+};
+
 export const EN_ROUTE_MOCK: MissionScreenState = {
   activeState: 'EN_ROUTE',
   color: colors.navigation,
@@ -35,6 +61,7 @@ export const EN_ROUTE_MOCK: MissionScreenState = {
     { kind: 'upcoming', n: 5, label: 'À venir' },
   ],
   alerts: [],
+  map: MOCK_MAP,
 };
 
 export const APPROACHING_MOCK: MissionScreenState = {
@@ -57,6 +84,7 @@ export const APPROACHING_MOCK: MissionScreenState = {
     { level: 'info', icon: Mail, text: 'Boîte aux lettres à droite de l’entrée' },
     { level: 'danger', icon: DoorClosed, text: 'Entrée étroite — soyez prudent' },
   ],
+  map: MOCK_MAP,
 };
 
 export const IN_PROGRESS_MOCK: MissionScreenState = {
@@ -84,6 +112,7 @@ export const IN_PROGRESS_MOCK: MissionScreenState = {
   alerts: [{ level: 'info', icon: Mail, text: 'Boîte aux lettres à droite de l’entrée' }],
   // Demonstrates the offline overlay is additive to any state, not a 5th one.
   offline: { pendingOperations: 3 },
+  map: MOCK_MAP,
 };
 
 export const PROBLEM_MOCK: MissionScreenState = {
@@ -101,4 +130,5 @@ export const PROBLEM_MOCK: MissionScreenState = {
     frozenSeconds: 143,
   },
   alerts: [],
+  map: MOCK_MAP,
 };
