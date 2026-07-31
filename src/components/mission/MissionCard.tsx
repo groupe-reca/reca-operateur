@@ -10,7 +10,7 @@ import { PressableScale } from '../ui/PressableScale';
 import { ProgressBar } from '../ui/ProgressBar';
 import { Txt } from '../ui/Txt';
 import { SyncIndicator } from './SyncIndicator';
-import { formatDuration } from './PhaseTimer';
+import { formatElapsedWithHours } from './PhaseTimer';
 
 type Props = {
   missionId: string;
@@ -20,6 +20,9 @@ type Props = {
   progressPct: number; // 0..100
   missionSeconds: number;
   syncState: SyncState;
+  // Estimated total duration, e.g. "1h 45 min (est.)" — shown next to the
+  // residence count, matching mock-encours.png's second meta line.
+  etaLabel?: string;
   onDetails?: () => void;
 };
 
@@ -32,6 +35,7 @@ export function MissionCard({
   progressPct,
   missionSeconds,
   syncState,
+  etaLabel,
   onDetails,
 }: Props) {
   return (
@@ -45,9 +49,28 @@ export function MissionCard({
             Mission active
           </Txt>
           <Txt style={styles.title}>{`Mission ${missionId}`}</Txt>
-          <Txt variant="meta" color={colors.textSecondary}>{`Secteur ${secteur} · ${total} résidences`}</Txt>
+          <Txt variant="meta" color={colors.textSecondary}>{`Secteur ${secteur}`}</Txt>
+          <Txt variant="meta" color={colors.textSecondary}>
+            {etaLabel ? `${total} résidences · ${etaLabel}` : `${total} résidences`}
+          </Txt>
         </View>
         <View style={styles.headerRight}>
+          {onDetails ? (
+            <PressableScale
+              onPress={onDetails}
+              style={styles.details}
+              accessibilityRole="button"
+              accessibilityLabel="Détails de la mission"
+            >
+              <Txt variant="body" color={colors.textSecondary}>
+                Détails
+              </Txt>
+              <Icon icon={ChevronRight} color={colors.textSecondary} size={16} />
+            </PressableScale>
+          ) : null}
+          {/* Kept subtle here — the primary sync affordance lives in AppHeader;
+              this fulfils the syncState contract (HANDOFF §4) without
+              competing visually with the "Détails" button above it. */}
           <SyncIndicator state={syncState} />
         </View>
       </View>
@@ -72,18 +95,9 @@ export function MissionCard({
           <Txt variant="labelCaps" color={colors.textSecondary}>
             Temps
           </Txt>
-          <Txt style={styles.statValue}>{formatDuration(missionSeconds)}</Txt>
+          <Txt style={styles.statValue}>{formatElapsedWithHours(missionSeconds)}</Txt>
         </View>
       </View>
-
-      {onDetails ? (
-        <PressableScale onPress={onDetails} style={styles.details} accessibilityRole="button" accessibilityLabel="Détails de la mission">
-          <Txt variant="body" color={colors.textSecondary}>
-            Détails
-          </Txt>
-          <Icon icon={ChevronRight} color={colors.textSecondary} size={16} />
-        </PressableScale>
-      ) : null}
     </GlassCard>
   );
 }
@@ -101,7 +115,7 @@ const styles = StyleSheet.create({
   },
   headerText: { flex: 1, gap: 2 },
   title: { fontFamily: fontFamily.extrabold, fontSize: 20, color: colors.textPrimary },
-  headerRight: { alignItems: 'flex-end' },
+  headerRight: { alignItems: 'flex-end', gap: spacing.xs },
   divider: { height: 1, backgroundColor: colors.border },
   stats: { flexDirection: 'row', gap: spacing.md },
   stat: { flex: 1, gap: spacing.xs },
@@ -109,7 +123,11 @@ const styles = StyleSheet.create({
   details: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
     gap: 2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.md,
   },
 });

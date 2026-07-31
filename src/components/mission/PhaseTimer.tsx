@@ -15,6 +15,19 @@ export function formatDuration(totalSeconds: number): string {
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
 }
 
+// Same idea, but always shows the hour segment (e.g. "00:18:32") — used by
+// the mission-wide elapsed time (MissionCard), distinct from the per-phase
+// PhaseTimer above which drops a zero hour (mock-encours.png shows both
+// conventions side by side: "TEMPS DE MISSION 00:18:32" vs a phase's "05:42").
+export function formatElapsedWithHours(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const seconds = s % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
 type Props = {
   label: string;
   seconds: number;

@@ -6,7 +6,7 @@ import { colors, spacing } from '@/config/theme';
 import { FloatingActionButton } from '../controls/FloatingActionButton';
 import { OfficialLogo } from '../brand/OfficialLogo';
 import { Wordmark } from '../brand/Wordmark';
-import { Txt } from '../ui/Txt';
+import { NotificationBadge } from '../ui/NotificationBadge';
 
 type Props = {
   onMenu?: () => void;
@@ -28,13 +28,7 @@ export function AppHeader({ onMenu, onSync, onNotifications, notifications = 0 }
         <FloatingActionButton icon={Cloud} size={44} iconColor={colors.success} onPress={onSync} accessibilityLabel="Synchronisation" />
         <View>
           <FloatingActionButton icon={Bell} size={44} onPress={onNotifications} accessibilityLabel="Notifications" />
-          {notifications > 0 ? (
-            <View style={styles.badge}>
-              <Txt variant="meta" color={colors.textPrimary}>
-                {String(notifications)}
-              </Txt>
-            </View>
-          ) : null}
+          <NotificationBadge count={notifications} />
         </View>
       </View>
     </View>
@@ -50,16 +44,4 @@ const styles = StyleSheet.create({
   },
   brand: { alignItems: 'center', gap: 2 },
   right: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  badge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
-    backgroundColor: colors.danger,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });

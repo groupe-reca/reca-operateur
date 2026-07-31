@@ -1,9 +1,10 @@
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useAppFonts } from '@/config/theme';
-import { ComponentGalleryScreen } from '@/screens/ComponentGalleryScreen';
+import { MissionScreen } from '@/screens/MissionScreen';
 
 // Keep the splash visible until Manrope is loaded (avoids a font flash).
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -25,12 +26,13 @@ export default function App() {
     return null;
   }
 
-  // Sprint 002: the component gallery is the visual deliverable. The assembled
-  // Mission Screen comes in Sprint 003.
+  // Sprint 003: the assembled Mission Screen (EN COURS) is now the entry
+  // point. ComponentGalleryScreen (Sprint 002) stays in the repo for
+  // reference/tests but is no longer wired here.
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="light" />
-      <ComponentGalleryScreen />
-    </>
+      <MissionScreen />
+    </SafeAreaProvider>
   );
 }

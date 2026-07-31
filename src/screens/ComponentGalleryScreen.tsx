@@ -51,6 +51,7 @@ export function ComponentGalleryScreen() {
           progressPct={10}
           missionSeconds={1112}
           syncState="synced"
+          etaLabel="1h 45 min (est.)"
           onDetails={() => {}}
         />
         <MissionCardCompact missionId="24-01-15" index={3} total={28} progressPct={10} />
