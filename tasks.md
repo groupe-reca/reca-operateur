@@ -51,10 +51,45 @@
   **Non vérifié visuellement** (VPS sans émulateur) : à comparer à `mock-encours.png` sur le
   laptop/téléphone via Expo Go. `BottomSheet` sans gestes de glissement (Sprint 003).
 
+- [x] **Sprint 003 — Écran maître EN COURS statique** (branche `sprint-003-mission-screen`,
+  2026-07-31). Assemble les composants du Sprint 002 en l'écran maître réel, fidèle à
+  `mock-encours.png` (Phase 02), données de l'exemple Roadmap (Mission 24-01-15, Saint-Jérôme,
+  3/28, 10 %, 00:18:32, 224 rue Scott). **`src/screens/MissionScreen.tsx`** : mise en page fixe
+  (pas de `ScrollView` — carte `flex:1` entre un bloc haut et un bloc bas, cohérent avec « aucun
+  écran blanc, seulement des panneaux »), `SafeAreaProvider`/`useSafeAreaInsets` (**lacune
+  Sprint 002 corrigée** : les *safe areas* étaient un livrable Phase 01 manqué). **Carte
+  simulée** : `src/components/map/SimulatedMapBackground.tsx` réutilise directement
+  `assets/map-night.svg` (rues + **tracé bleu déjà dessiné dedans**) et positionne juste des
+  marqueurs (`ResidenceMapMarker.tsx`, badge neutre ou halo vert+maison si actif) + `FixedTractor`
+  en pourcentages du viewBox (SVG étiré `preserveAspectRatio="none"`). **Nouveaux composants**
+  mission : `CurrentResidenceProgressCard` (colonne gauche : état/adresse/repères
+  done-current-upcoming + `ProblemButton`), `ResidenceTasksCard` (panneau droit : tâches +
+  temps estimé). **Nouveau contrôle** : `BottomTabBar` (5 onglets Carte/Mission/Annonce/Alertes/
+  Plus — voir décision ci-dessous) + `NotificationBadge` factorisé (`src/components/ui/`,
+  dédoublonne le badge déjà présent dans `AppHeader`). **Décision de portée** (documentée,
+  cohérente avec le précédent du ☰ décoratif sur `reca-operator`) : la maquette contient des
+  éléments non nommés dans `HANDOFF.md` §1 (panneau de tâches, colonne de suivi, barre
+  d'onglets) — construits **fidèlement** (Roadmap l'exige explicitement pour ce sprint) mais
+  **seuls Carte et Annonce sont fonctionnels** ; Mission/Alertes/Plus restent des placeholders
+  décoratifs (`onPress` no-op), aucun second écran n'existe encore. **Corrections de fidélité
+  découvertes en assemblant** (dans les composants Sprint 002) : `MissionCard` affichait
+  « Secteur X · N résidences » sur une ligne au lieu de deux + n'avait pas de bouton « Détails »
+  visuellement distinct (ajout `etaLabel`, split en 2 lignes méta, « Détails » devient un vrai
+  bouton bordé, `SyncIndicator` déplacé sous ce bouton) ; nouveau `formatElapsedWithHours`
+  (`PhaseTimer.tsx`) car le « TEMPS DE MISSION » de la maquette montre toujours l'heure
+  (« 00:18:32 »), contrairement au chrono de phase qui l'omet à zéro. **`BottomSheet` toujours
+  sans geste** : la maquette ne montre pas de poignée sur « RÉSIDENCE ACTUELLE » (carte à hauteur
+  fixe) — `CurrentResidenceSheet` (déjà construit sans geste) convenait tel quel, aucune
+  dépendance gesture-handler/reanimated nécessaire. `App.tsx` rend désormais `MissionScreen`
+  (plus `ComponentGalleryScreen`, qui reste dans le repo pour référence/tests). Dépendance
+  ajoutée : `react-native-safe-area-context`. Vérifié sur le VPS : `tsc`/`eslint`/`expo-doctor`
+  (20/20) propres, `jest` 10/10 verts (dont un piège noté : `SafeAreaProvider` ne rend ses
+  enfants qu'avec des `initialMetrics` de test explicites, l'export `initialWindowMetrics` de la
+  lib étant toujours `null` sous Jest — voir `memory.md`). **Non vérifié visuellement** (VPS
+  sans émulateur) : comparaison à `mock-encours.png` à faire sur le laptop/téléphone.
+
 ## À faire — prochains sprints (ordre roadmap `docs/11-Roadmap.md`)
 
-- [ ] **Sprint 003 — Écran maître EN COURS statique** (Phase 02) : reproduire la maquette Fable
-  (carte simulée/image), comparer par capture, corriger proportions/espacements/opacités.
 - [ ] **Sprint 004 — Variantes opérationnelles** (Phase 03) : EN ROUTE / EN APPROCHE / EN COURS /
   PROBLÈME / FIN / HORS LIGNE — même structure, seules changent couleur/libellé/chrono/alertes.
 - [ ] **Sprint 005-006 — Map Engine** (Phase 04) : intégrer `@rnmapbox/maps`, style nuit, caméra

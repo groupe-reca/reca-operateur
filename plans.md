@@ -6,9 +6,58 @@
 
 ## Plan actif
 
-- (aucun — prochain : Sprint 003, à planifier ici avant de coder)
+- (aucun — prochain : Sprint 004, à planifier ici avant de coder)
 
 ## Archivé
+
+### ✅ Sprint 003 — Écran maître EN COURS statique (2026-07-31)
+
+**Objectif** : assembler fidèlement les composants du Sprint 002 en l'écran maître réel (état
+EN COURS, Phase 02 Roadmap), carte simulée (pas encore Mapbox), données de l'exemple officiel.
+
+**Contexte/découvertes** : `assets/map-night.svg` s'est avéré directement exploitable comme
+carte simulée (rues + tracé bleu déjà dessinés) — pas de nouveau tracé à construire, seulement
+des marqueurs + le tracteur en overlay. La maquette contenait des éléments non listés dans
+`HANDOFF.md` §1 (panneau de tâches, colonne de suivi de phase, barre d'onglets bas) : décision
+prise de les construire fidèlement (Roadmap l'exige pour ce sprint précis) mais de garder
+Mission/Alertes/Plus décoratifs (aucun second écran encore), cohérent avec le précédent du menu
+☰ décoratif posé sur le repo frère `reca-operator`. `docs/05-Map-Engine.md` donne une palette de
+rang (vert/bleu/gris) qui est la règle du **futur** Map Engine réel (Phase 04) — pas celle,
+plus simple, de ce sprint statique (vert actif / neutre sinon).
+
+**Fichiers concernés** : `src/screens/MissionScreen.tsx` (nouveau), `src/components/map/**`
+(nouveau : `SimulatedMapBackground`, `ResidenceMapMarker`), `src/components/mission/
+CurrentResidenceProgressCard.tsx` + `ResidenceTasksCard.tsx` (nouveaux),
+`src/components/controls/BottomTabBar.tsx` (nouveau), `src/components/ui/NotificationBadge.tsx`
+(nouveau, factorisé depuis `AppHeader`), corrections dans `MissionCard.tsx`/`PhaseTimer.tsx`
+(fidélité), `App.tsx` (bascule vers `MissionScreen` + `SafeAreaProvider`), tests
+(`tests/missionScreen.test.tsx`).
+
+**Étapes réalisées** : (1) branche `sprint-003-mission-screen` ; (2) `react-native-safe-area-
+context` installé (lacune Phase 01 corrigée) ; (3) `ResidenceMapMarker` + `SimulatedMapBackground`
+(positions codées en dur sur le tracé existant du SVG) ; (4) `NotificationBadge` extrait +
+`AppHeader` mis à jour ; (5) `CurrentResidenceProgressCard`, `ResidenceTasksCard`,
+`BottomTabBar` ; (6) corrections de fidélité `MissionCard`/`PhaseTimer`
+(`formatElapsedWithHours`) découvertes en assemblant contre la maquette réelle ; (7) `MissionScreen`
+assemblé (layout fixe, pas de scroll) + `App.tsx` mis à jour ; (8) tests de rendu ajoutés.
+
+**Risques rencontrés / traités** : `SafeAreaProvider` ne rend ses enfants qu'après un événement
+natif `onInsetsChange` qui ne se déclenche jamais sous Jest (`children: null` observé) — et
+l'export `initialWindowMetrics` de la lib lit une constante de module natif toujours `null` en
+test ; résolu en fournissant des `initialMetrics` synthétiques dans le test.
+`getByLabelText(...).props.onPress` ne fonctionne pas avec `Pressable` (ne remonte pas la prop
+sur le nœud hôte) → utiliser `fireEvent.press(...)`.
+
+**Critères de réussite** : structure complète, carte dominante, chrono/adresse visibles
+immédiatement, aucune logique métier dans les composants, safe areas gérées, `tsc`/`eslint`/
+`jest` verts (10/10), `expo-doctor` 20/20 — **tous atteints headless**. Comparaison visuelle
+avec `mock-encours.png` **en attente** (laptop/téléphone du propriétaire).
+
+**Impact documentation** : aucun changement de direction des `docs/` officiels ; décisions de
+portée (barre d'onglets, panneau de tâches) et nuance Sprint003-vs-Phase04 consignées dans
+`memory.md`.
+
+**Limite** : rendu non vérifié visuellement sur ce VPS (pas d'émulateur).
 
 ### ✅ Sprint 002 — Design tokens & composants (2026-07-30)
 

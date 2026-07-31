@@ -63,6 +63,55 @@
   primitives de base — cohérent avec la généricité Signa).
 - **`PhaseTimer` affiche, ne compte pas** : `formatDuration(seconds)` est une fonction pure
   (mm:ss, ou h:mm:ss après 1 h) — le calcul temps réel viendra du GPS Engine/State Machine.
+- **Deux conventions d'horloge coexistent, volontairement** : `formatDuration` (chrono de phase,
+  omet l'heure à zéro, ex. « 05:42 ») vs `formatElapsedWithHours` (Sprint 003, « TEMPS DE
+  MISSION » de `MissionCard`, **toujours** `hh:mm:ss` même à zéro, ex. « 00:18:32 ») — les deux
+  fonctions vivent dans `PhaseTimer.tsx`. Ne pas les fusionner : c'est `mock-encours.png` qui
+  distingue explicitement les deux affichages, pas une incohérence à corriger.
+
+## Écran maître (Sprint 003, `MissionScreen.tsx`)
+
+- **`assets/map-night.svg` sert directement de carte simulée** (Phase 02, avant Mapbox) : rues +
+  **tracé bleu suggéré déjà dessiné** dedans (`M400,1000 V580 H250 V260 H550 V100`, viewBox
+  800×1000). `SimulatedMapBackground` ne fait que poser des marqueurs (`ResidenceMapMarker`) +
+  `FixedTractor` par-dessus, positionnés en **fractions (0..1) du viewBox codées en dur** (mock
+  data, pas de géométrie calculée) ; le SVG de fond est étiré `preserveAspectRatio="none"` pour
+  que ces fractions s'alignent exactement quel que soit l'écran (acceptable : carte stylisée,
+  pas une photo — une vraie photo satellite ne devrait, elle, jamais être étirée ainsi).
+- **Décision — palette de marqueurs Sprint 003 ≠ palette du futur Map Engine** :
+  `docs/05-Map-Engine.md` documente une palette **par rang** pour le vrai moteur (actif=vert,
+  2e/3e=bleu, 4e/5e=gris), qui n'entre en vigueur qu'en **Phase 04** (Mapbox réel). La maquette
+  statique de CE sprint est plus simple (seul l'actif a un halo vert+icône maison, tous les
+  autres sont un badge neutre gris/blanc) — c'est ce qui est implémenté maintenant. **Ne pas
+  confondre les deux au moment de la Phase 04** : le futur `MapMarker` du vrai Map Engine devra
+  suivre `docs/05`, pas recopier `ResidenceMapMarker` tel quel.
+- **Décision — barre d'onglets du bas (`BottomTabBar`, 5 items Carte/Mission/Annonce/Alertes/
+  Plus) et panneau de tâches (`ResidenceTasksCard`) construits fidèlement à `mock-encours.png`**
+  bien qu'absents de la liste de composants de `HANDOFF.md` §1. Aucune contradiction avec
+  `docs/01`/`docs/02` (qui ne les interdisent pas, juste ne les nomment pas) ; la Roadmap exige
+  une reproduction fidèle pour ce sprint précis. **Seuls Carte (écran actuel) et Annonce
+  (bascule voix réelle, réutilise `VoiceButton`) sont fonctionnels** — Mission/Alertes/Plus
+  restent des placeholders décoratifs (`onPress` no-op) tant qu'aucun second écran n'existe
+  (Phase 11 leur donnera de vraies destinations). Précédent cohérent : le ☰ décoratif du repo
+  frère `reca-operator` (même raisonnement, même utilisateur).
+- **`BottomSheet` (coquille sans geste, construite au Sprint 002) reste sans geste de
+  glissement** : `mock-encours.png` ne montre aucune poignée sur « RÉSIDENCE ACTUELLE » (carte à
+  hauteur fixe) — `CurrentResidenceSheet` convient tel quel. Toujours aucune dépendance
+  gesture-handler/reanimated dans le projet ; à réévaluer seulement si une future maquette montre
+  un vrai geste de glissement (ex. l'onglet « Mission » ouvrant une liste complète).
+- **Corrections de fidélité apportées aux composants Sprint 002** (découvertes en assemblant,
+  pas des inventions) : `MissionCard` gagne `etaLabel` + split de la ligne méta en 2 lignes
+  (« Secteur X » puis « N résidences · estimation ») et un vrai bouton « Détails » bordé
+  (remplace l'ancien texte+chevron nu) ; `SyncIndicator` déplacé sous ce bouton (satisfait le
+  contrat `syncState` de HANDOFF §4 sans concurrencer visuellement « Détails », qui occupe ce
+  coin dans la maquette réelle).
+- **Layout non scrollable** (`docs/01` : « aucun écran blanc, seulement des panneaux ») :
+  `MissionScreen` est une colonne flex fixe, carte en `flex:1` entre un bloc haut (header +
+  MissionCard) et un bloc bas (résidence actuelle + barre d'onglets), calques flottants gauche/
+  droite en `position:absolute` par-dessus la carte.
+- **Safe areas ajoutées** (`react-native-safe-area-context`) — lacune du Sprint 002 (listée comme
+  livrable Phase 01 mais oubliée, la galerie en `ScrollView` s'en passait) : nécessaire dès qu'un
+  écran a une mise en page fixe avec du contenu épinglé aux bords.
 
 ## Contraintes à ne jamais oublier
 
@@ -109,6 +158,19 @@
 - **`@types/jest` doit rester aligné sur la version de `jest`** (pas juste « la dernière ») :
   `jest@29.7` + `@types/jest@30` passait `tsc` mais `expo-doctor` le signalait en écart avec
   l'attente SDK 57 (`29.5.14`). Épinglé en exact.
+- **`SafeAreaProvider` ne rend ses enfants qu'après un événement natif `onInsetsChange`** —
+  qui ne se déclenche jamais sous Jest (aucun vrai natif) : un test qui monte `MissionScreen`
+  sous `<SafeAreaProvider>` nu obtenait `children: null` (confirmé via `toJSON()`). L'export
+  `initialWindowMetrics` de la lib (censé résoudre ça) est **lui-même toujours `null` sous
+  Jest** (`InitialWindow.native.js` lit une constante de module natif absente en test). **Fixé**
+  en passant des **métriques synthétiques maison** (`{ frame: {...}, insets: {...} }`) à la prop
+  `initialMetrics` du `SafeAreaProvider` du test — ne pas essayer d'utiliser
+  `initialWindowMetrics` importé de la lib dans un test, il ne fonctionne pas ici.
+- **`getByLabelText(...).props.onPress` ne fonctionne pas avec `Pressable`** : `Pressable` ne
+  remonte pas `onPress` comme prop directe sur le nœud hôte rendu (géré en interne via les
+  responders tactiles) → `.props.onPress` est `undefined` même quand le composant fonctionne
+  réellement. Utiliser **`fireEvent.press(element)`** (de `@testing-library/react-native`), qui
+  simule correctement l'appui quel que soit le câblage interne.
 
 ## Intégration RECA App (à approfondir en Phase 08)
 

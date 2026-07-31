@@ -13,8 +13,9 @@
 - `babel.config.js` — preset `babel-preset-expo` (requis par le transform jest).
 - `eslint.config.js` — flat config `eslint-config-expo` (+ ignores `.input`, natifs, config cjs).
 - `index.ts` — enregistre le composant racine (`registerRootComponent(App)`).
-- `App.tsx` — charge les polices Manrope (`useAppFonts`) puis affiche
-  `ComponentGalleryScreen` (Sprint 002). Remplacé par l'écran maître assemblé au Sprint 003.
+- `App.tsx` — charge les polices Manrope (`useAppFonts`) puis affiche `MissionScreen` dans un
+  `SafeAreaProvider` (Sprint 003). `ComponentGalleryScreen` reste dans le repo (référence/tests)
+  mais n'est plus le point d'entrée.
 - `metro.config.js` — Metro Expo par défaut + `react-native-svg-transformer` (import `.svg`
   officiels comme composants React).
 - `.gitignore` — Expo + natifs générés + `.input/` + `ecosystem.config.cjs`.
@@ -36,19 +37,28 @@
 
 Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 
-- `src/app/` — composition racine (providers, thème, montage). Vide (Sprint 003+).
+- `src/app/` — composition racine (providers, thème, montage). Vide.
 - `src/screens/`
-  - `ComponentGalleryScreen.tsx` — galerie de tous les composants Sprint 002 (mock data),
-    livrable de comparaison visuelle avec `mock-encours.png`. Pas un écran produit.
+  - `MissionScreen.tsx` — **écran produit** (Sprint 003) : assemble tous les composants en
+    l'écran maître EN COURS, mise en page fixe (pas de scroll), mock data de l'exemple Roadmap.
+  - `ComponentGalleryScreen.tsx` — galerie de tous les composants (mock data), référence de
+    comparaison visuelle, plus le point d'entrée de `App.tsx` depuis le Sprint 003.
 - `src/components/` — UI présentationnelle pure.
   - `ui/` — primitives : `Txt`, `GlassCard`, `PressableScale`, `Icon`, `ProgressBar`,
-    `StatusDot`, `Pill`.
+    `StatusDot`, `Pill`, `NotificationBadge` (Sprint 003, factorisé depuis `AppHeader`).
   - `brand/` — `OfficialLogo` (SVG officiel), `Wordmark` (texte « OPÉRATEUR »).
-  - `mission/` — `AppHeader`, `MissionCard`, `MissionCardCompact`, `PhaseTimer`
-    (+ `formatDuration` pur, testé), `AlertCard`, `SystemStatus`, `OfflineIndicator`,
-    `SyncIndicator`, `CurrentResidenceSheet`, `UpcomingResidenceRow`, `FixedTractor`.
+  - `mission/` — `AppHeader`, `MissionCard` (+ `etaLabel`, bouton « Détails » bordé — corrigé
+    Sprint 003), `MissionCardCompact`, `PhaseTimer` (+ `formatDuration` et
+    `formatElapsedWithHours` purs, testés), `AlertCard`, `SystemStatus`, `OfflineIndicator`,
+    `SyncIndicator`, `CurrentResidenceSheet`, `UpcomingResidenceRow`, `FixedTractor`,
+    `CurrentResidenceProgressCard` (Sprint 003, colonne gauche EN COURS), `ResidenceTasksCard`
+    (Sprint 003, panneau droit tâches).
   - `controls/` — `FloatingActionButton`, `ProblemButton`, `VoiceButton`, `BottomSheet`
-    (coquille, gestes de glissement différés au Sprint 003).
+    (coquille, gestes de glissement toujours différés — la maquette n'en montre pas le besoin),
+    `BottomTabBar` (Sprint 003 ; seuls Carte/Annonce fonctionnels, voir `memory.md`).
+  - `map/` (Sprint 003, nouveau) — `SimulatedMapBackground` (fond `map-night.svg` + marqueurs +
+    tracteur, **placeholder statique remplacé par le vrai Map Engine en Phase 04**),
+    `ResidenceMapMarker` (badge neutre / halo vert+maison si actif).
 - `src/domain/`
   - `status.ts` — `MissionItemState` (union) + `STATE_LABELS_FR`. Pur, sans React/I/O.
 - `src/engines/` — moteurs métier hors React (event-based, deps injectées). Vide (Sprint 006+) :
@@ -81,6 +91,9 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 
 - `tests/components.test.tsx` — `formatDuration` (pur) + rendu `PhaseTimer`/`AlertCard`/
   `MissionCard`.
+- `tests/missionScreen.test.tsx` (Sprint 003) — `formatElapsedWithHours` (pur) + rendu
+  `CurrentResidenceProgressCard`/`BottomTabBar` (dont un `fireEvent.press`) + `MissionScreen`
+  (avec `SafeAreaProvider` + métriques synthétiques — voir piège dans `memory.md`).
 - `tests/__mocks__/svgMock.tsx` — stub Jest pour les imports `.svg`.
 - `tests/__mocks__/lucideMock.js` — stub Jest pour `lucide-react-native` (Proxy → icône no-op ;
   fichier `.js` volontairement, hors du typecheck TS — voir `tsconfig.include`).
@@ -95,4 +108,5 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - Visuel (Sprint 002) : `expo-font` + `expo-asset` (transitif) + `@expo-google-fonts/manrope`,
   `expo-blur`, `react-native-svg` (+ `-transformer` en dev), `expo-splash-screen`,
   `lucide-react-native`.
+- Layout (Sprint 003) : `react-native-safe-area-context`.
 - À venir : `@rnmapbox/maps` (Phase 04), client Supabase, stockage local, TTS.
