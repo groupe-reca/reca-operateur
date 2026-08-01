@@ -28,6 +28,14 @@
   natif `android/`. Le **code vit sur le VPS** (dev + typecheck/lint/tests headless) et se
   synchronise au laptop **par git**. Expo n'empêche pas le build Android Studio ; il l'outille
   (config plugins). Convertible en « bare » plus tard si besoin.
+- **Workflow git** : une **branche par sprint** (`sprint-XXX-nom`), chacune construite sur la
+  précédente → historique **linéaire**, merges en **fast-forward** dans `main` (jamais de merge
+  commit ni de rebase à refaire). **Fusion du 2026-08-01** : Sprints 001 → 007-008 (12 commits,
+  `f139f4e` → `24cbe52`) fusionnés et **poussés dans `origin/main`**, qui ne contenait jusque-là
+  que le scaffold Vite initial. `main` est désormais la **référence à cloner sur le laptop**
+  pour `expo prebuild`. Les branches sprint sont conservées (non supprimées). Avant tout merge :
+  `npm run typecheck` + `npm run lint` + `npm test` doivent passer (au 2026-08-01 : 27 tests,
+  4 suites, tout vert).
 - **Carte = `@rnmapbox/maps`** (confirmé par le HANDOFF). **Installé au Sprint 005-006** —
   premier module natif du projet, **Expo Go ne fonctionne plus depuis lors** ; tout test
   runtime nécessite désormais un dev build (`expo prebuild` + Android Studio). Détails complets
