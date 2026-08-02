@@ -640,6 +640,252 @@
   — il faut alors demander au propriétaire de brancher un appareil (`adb devices` vide = bloqué,
   à vérifier **avant** de commencer toute tâche de calibrage visuel plutôt que de supposer que ce
   n'est jamais possible ici).
+- **Workflow confirmé par le propriétaire (2026-08-02)** : le développement/build/calibrage se
+  fait avec **Android Studio + adb**, appareil branché en USB sur cette même machine (pas de
+  laptop distinct impliqué dans cette boucle). Séquence à suivre pour tout besoin de
+  captures/vérification visuelle : `npm run start -- --dev-client` (jamais `npm run start` seul —
+  Expo Go ne fonctionne plus depuis l'intégration Mapbox native, Sprint 005-006) → `adb reverse
+  tcp:8081 tcp:8081` → si l'app est déjà installée, `adb shell am force-stop
+  ca.groupereca.recaoperateur` puis relancer via `monkey -p ca.groupereca.recaoperateur -c
+  android.intent.category.LAUNCHER 1` (un simple retour au premier plan d'une instance déjà
+  résidente peut rester bloqué sur un bundle JS périmé/déconnecté — observé concrètement : écran
+  bleu marine vide jusqu'au force-stop) → attendre la ligne `Android Bundled … index.ts` dans les
+  logs Metro avant de capturer. Package réel : `ca.groupereca.recaoperateur` (un second package
+  `com.anonymous.recaoperateur` traîne aussi sur l'appareil de test, obsolète, ne pas l'utiliser).
+
+## State Machine (Sprint 009-010, 2026-08-01)
+
+- **Moteur pur** (`src/engines/state-machine/`), aucun React, `Db`/`Clock` injectés (mêmes
+  contraintes que la persistance Sprint 007-008) — appelé par un futur GPS Engine/mode
+  développement, pas encore câblé nulle part côté React (`MissionContext`/`MissionScreen`
+  inchangés à part la migration de `ACTIVE_STATES`, voir plus bas). **Ne pas** considérer ce
+  sprint comme livrant une fonctionnalité visible dans l'app — c'est l'autorité métier, prête à
+  être appelée.
+- **Aucune validation GPS (précision/délai) dans ce moteur** — décision explicite, conforme à
+  `docs/09` (« la State Machine n'est pas responsable de… calculer une distance »). Les commandes
+  acceptent `gpsAccuracyMeters`/`latitude`/`longitude` en option (stockés tels quels sur la
+  `StateTransition`) mais ne les valident pas ; ce sera la responsabilité du GPS Engine
+  (Sprint 011-012) d'appeler la bonne commande au bon moment.
+- **Verrou de transition = file de promesses par mission** (`Map<missionId, Promise>`), pas un
+  vrai mutex OS (inutile en JS mono-thread) — suffisant pour sérialiser deux commandes concurrentes
+  sur la même mission et empêcher une course sur l'invariant « une résidence active ».
+- **Déduplication** : si l'état cible demandé est déjà l'état courant de l'item/mission → refus
+  immédiat (`DUPLICATE_TRANSITION`), **aucun** effet de bord, avant même de vérifier le graphe de
+  transitions. Un événement « obsolète » (ex. `ApproachRadiusEntered` reçu alors que l'item est
+  déjà `IN_PROGRESS`) est naturellement rejeté par le graphe normal (`INVALID_TRANSITION`, car
+  `IN_PROGRESS` n'autorise pas de retour vers `APPROACHING`) — **pas besoin d'un code d'erreur
+  séparé** pour ce cas, le graphe suffit.
+- **`ANOTHER_ITEM_ACTIVE` ne se déclenche que pour une *nouvelle* activation** : seulement quand
+  l'item partait d'un état **non actif** (`WAITING`/`SKIPPED`/`PROBLEM`) vers un état actif. Un
+  item déjà actif qui progresse (`APPROACHING → IN_PROGRESS`) n'est **pas** une nouvelle
+  activation et ne redéclenche pas ce contrôle — piège trouvé en écrivant les tests (un premier
+  jet du test créait volontairement deux items actifs en même temps pour tester ce refus, ce qui
+  testait en réalité un état de départ déjà invalide, pas la règle elle-même).
+- **`reason` réutilisé, pas de nouvelle colonne SQL** : le vocabulaire `docs/09` pour le cas
+  adjacent (`travelTimeSource: 'ADJACENT_RESIDENCE_FALLBACK'`) et la transition directe
+  EN_ROUTE→IN_PROGRESS (`transitionSource: 'ADJACENT_RESIDENCE'|'MANUAL'|'RECOVERY'|…`) décrit des
+  champs **distincts** de `StateTransition.source` (qui reste `GPS|MANUAL|SYSTEM|RECOVERY|ADMIN`,
+  tel que défini dans `src/domain/entities.ts` depuis le Sprint 007-008). Plutôt que d'inventer une
+  colonne, cette information est stockée dans le champ `reason` (texte libre, déjà existant) —
+  décision pour ne pas modifier le schéma sans nécessité avérée.
+- **Résidences adjacentes** : une seule transaction (`Db.withTransactionAsync`) écrit A→COMPLETED
+  et B→WAITING→IN_PROGRESS (temps de trajet fixé à 5 s), avec **deux** lignes `StateTransition`
+  (une par item) plutôt qu'une seule — plus fidèle à « chaque décision doit pouvoir être
+  expliquée » (`docs/09` Journalisation) que de fusionner les deux mouvements en une seule ligne.
+- **Récupération après redémarrage** (`recoverOnStartup`) : le cas « plusieurs actifs » sort
+  volontairement du graphe de transitions normal — les items actifs en surnombre sont ramenés à
+  `WAITING` par une écriture directe (pas via `applyItemTransition`, qui refuserait
+  `IN_PROGRESS → WAITING` comme non autorisé), source `SYSTEM`, `reason` documentant l'anomalie.
+  Justifié par `docs/09` : « restaurer un seul MissionItem actif… conserver une trace de la
+  correction » — c'est une correction administrative explicite et journalisée, pas une régression
+  silencieuse au sens de l'invariant « un MissionItem terminé ne revient pas automatiquement en
+  arrière » (ces items n'étaient pas terminés, juste en conflit d'invariant).
+- **`ACTIVE_STATES` de `MissionContext.tsx` migrée** vers `ACTIVE_ITEM_STATES`/`isActiveItemState`
+  dans `src/engines/state-machine/itemTransitions.ts` — c'était une règle métier dupliquée hors du
+  moteur, maintenant source unique. `MissionContext.tsx` importe cette fonction, ne redéfinit plus
+  rien.
+- **Portée explicitement exclue de ce sprint** (à ne pas essayer de « corriger en passant ») :
+  mode simulation / UI développeur (§ « Mode simulation » `docs/09`, correspond au Sprint 017-019
+  « mode développement » de `tasks.md`) ; câblage réel dans `MissionContext` (méthodes de commande
+  exposées aux composants) ou `MissionScreen` — les commandes existent et sont testées, mais
+  aucun appelant réel ne les invoque encore dans l'app.
+
+## GPS Engine (Sprint 011-012, 2026-08-01)
+
+- **Moteur pur** (`src/engines/gps/`), aucun React, `StateMachine`/`Clock` injectés — appelle
+  **directement** les commandes du State Machine (`enterApproach`/`enterWork`/`completeItem`/
+  `enterAdjacentResidence`) une fois un délai de validation écoulé, jamais d'écriture directe
+  (`docs/04` : le GPS Engine « ne modifie jamais directement le statut »).
+- **Deux hypothèses non chiffrées par `docs/04`, à valider par le propriétaire** — la doc dit
+  seulement « ignorer les positions dont la précision dépasse le seuil configuré » et « attendre
+  le retour du signal » sans donner de nombre : **précision GPS max acceptée = 50 m** et **délai
+  de détection de perte de signal = 15 s**, tous deux par défaut dans `DEFAULT_GPS_THRESHOLDS`
+  (marqués `@assumption` dans `types.ts`). Ce n'est **pas** une règle métier inventée (le
+  comportement — filtrer/détecter — est documenté), juste un paramètre par défaut manquant.
+- **`MissionItem.detectionRadiusMeters` (Sprint 007-008, jamais expliqué depuis) interprété comme
+  un remplacement optionnel du rayon de début d'intervention (30 m) propre à la résidence** — le
+  nom « rayon de détection » (`docs/03`) colle le mieux à « entrée dans la zone de travail ». Les
+  rayons d'approche (250 m) et de fin (50 m) restent globaux, aucun champ dédié dans le schéma.
+  **À reconfirmer avec le propriétaire** si un jour ce champ s'avère représenter autre chose.
+- **Validation par délai** : même schéma partout (entrée en rayon d'approche/travail/adjacence,
+  sortie du rayon de fin, stabilisation du cap) — un candidat de transition doit être **revu
+  identique** après le délai requis avant d'être accepté ; toute observation qui casse la
+  condition avant l'échéance réinitialise le candidat (pas de mémoire partielle). Implémenté une
+  seule fois (`validate()`/`resetPendingIfMatches()`), pas dupliqué par zone.
+- **`setActiveResidence` prend une `startingPhase` explicite** (défaut `EN_ROUTE`, cohérent avec
+  `docs/04` « Démarrage ») — piège trouvé en écrivant les tests : sans ce paramètre, reprendre la
+  surveillance d'une résidence déjà `APPROACHING`/`IN_PROGRESS` (ex. après redémarrage) forçait
+  incorrectement le moteur à repartir de `EN_ROUTE`, qui n'aurait jamais permis d'atteindre les
+  seuils déjà dépassés dans la réalité.
+- **Correction rétroactive du State Machine (Sprint 009-010)** : `docs/09` « Activation de la
+  résidence suivante » n'avait **jamais été implémentée** — `completeItem` complétait l'item
+  courant sans jamais chercher/activer le prochain `WAITING` admissible en `EN_ROUTE`, contrairement
+  à la section dédiée de `docs/09` et à la responsabilité explicite « activer le MissionItem
+  suivant » listée pour la State Machine. Corrigé dans `stateMachine.ts`
+  (`activateNextAdmissibleItem`, appelée depuis `completeItem` via un nouveau hook générique
+  `additionalWrites(missionId, occurredAt)` sur `applyItemTransition`/`writeItemTransition` —
+  s'exécute **dans la même transaction** que la complétion). Le GPS Engine s'appuie directement
+  sur ce comportement : après un `completeItem` réussi, il n'a **pas** besoin d'appeler
+  `startEnRoute` lui-même pour la résidence suivante — le State Machine s'en charge. 2 tests
+  ajoutés à `tests/stateMachine.test.ts` (17/17 après correction).
+- **Simulateur = Travail explicite de cette phase** (`docs/11` Phase 07 « Simulation obligatoire »),
+  contrairement au mode simulation du State Machine (différé au Sprint 017-019, § « Mode
+  simulation » de `docs/09`) — distinction voulue : ici c'est un harnais de test réutilisable
+  (`simulator.ts`, `createGpsSimulator`), pas un écran développeur. Réutilise le **même** moteur
+  que la production (`docs/09` : « la simulation doit utiliser la même State Machine que la
+  production »), jamais de logique dupliquée.
+- **Portée explicitement exclue** (comme le State Machine) : capteur `expo-location` réel
+  (permissions, test sur appareil physique — étape « tester sur appareil réel » du Roadmap),
+  câblage dans `MissionContext`/`MissionScreen`. Le moteur est prêt (commandes + simulateur
+  testés) mais sans appelant réel dans l'app pour l'instant.
+
+## Intégration Supabase réelle (2026-08-02)
+
+- **`reca-app` accessible sur cette machine** (`/c/var/www/html/reca-app`, cloné par le
+  propriétaire) + credentials Supabase ajoutés dans `reca-operateur/.env.local` (préfixe renommé
+  `VITE_*` → `EXPO_PUBLIC_*`, mêmes valeurs, même projet Supabase partagé). C'est la tâche de
+  suivi promise au Sprint 013-014 — voir plan archivé dans `plans.md` pour le détail complet.
+- **RLS réelle étudiée dans `reca-app/supabase/migrations/`** : `missions`/`mission_items`
+  autorisent l'**UPDATE** de l'opérateur assigné (`employees.user_id = auth.uid()` →
+  `missions.operator_id`), mais **INSERT/DELETE restent admin-only** — aucune Mission n'est
+  jamais créée depuis `reca-operateur`. `mission_items.statut_operateur` (7 valeurs) +
+  `heure_arrivee`/`heure_fin`/`duree_trajet_secondes`/`duree_intervention_secondes` existent déjà
+  côté serveur, anticipant précisément notre State Machine granulaire. **Aucune table
+  `problems`/notes par item côté serveur** → Problem/Note (listés par `docs/11` Phase 08) restent
+  hors de portée tant que ce schéma n'existe pas, comme les médias.
+- **Mapping de statut, décisions du propriétaire (2026-08-02, ne pas réinventer)** :
+  `WAITING/EN_ROUTE/APPROACHING/IN_PROGRESS/COMPLETED` → `en_attente/en_route/en_approche/
+  en_cours/terminee` (1:1). `PROBLEM`/`SKIPPED` → **convergent** vers `a_reprendre` (serveur n'a
+  pas d'équivalent séparé). `CANCELLED` **ne doit jamais être produit par l'opérateur** —
+  `toServerItemStatutOperateur` lève `UnsupportedStatusError` plutôt que de mapper silencieusement
+  (`src/integrations/supabase/statusMapping.ts`). Rollup `mission_items.statut` dérivé de
+  `statut_operateur` (règle du commentaire de migration : « en_cours pour tout état engagé »).
+- **Nouvelle règle métier découverte à cette occasion (confirmée par le propriétaire, pas
+  inventée)** : une résidence infaisable **ne s'annule jamais** — elle reste `a_reprendre`
+  (« retourne en bas de la liste, retenter plus tard » ; si toujours impossible, un **superviseur**
+  doit la traiter manuellement dans `reca-app`). Une fois toutes les résidences traitées,
+  l'opérateur **reste en mission active** durant son trajet retour au garage, puis appuie sur
+  **« Fermer la mission »** (backend déjà prêt : `requestMissionComplete` du Sprint 009-010) — ceci
+  écrit `missions.heure_fin`/`statut` et sert de **feuille de temps** (`heure_debut`/`heure_fin`
+  existaient déjà, aucune colonne ajoutée). `Mission.status === 'COMPLETED'` se traduit
+  `'terminee'` si tous les items sont `terminee`, sinon **`'terminee_avec_anomalies'`** (au moins
+  un `a_reprendre`) — c'est le mécanisme exact qui alerte le superviseur, dérivé automatiquement
+  par `SupabaseSyncTransport` (une requête `count` sur `mission_items` avant l'update de Mission).
+  **Le bouton UI « Fermer la mission » lui-même n'existe pas encore** (`Mission`/`Plus` restent
+  des onglets placeholders) — suivi ouvert dans `tasks.md`.
+- **Convention id serveur = id local, sans exception, pour toute mission réelle** : contrairement
+  au seed de démo (`seedDemoMissionIfEmpty`, UUID générés localement, jamais synchronisés),
+  `fetchAssignedMission` écrit les entités locales avec les **id Supabase tels quels** — c'est ce
+  qui permet à `SupabaseSyncTransport` de faire un simple `UPDATE ... WHERE id = <id local>` et de
+  retrouver la bonne ligne. Ne jamais générer un nouvel id (`generateId()`) pour une
+  Mission/MissionItem qui provient du serveur.
+- **`heure_arrivee` interprétée comme `enCoursAt`** (début d'intervention, pas début d'approche) —
+  `@assumption` du même type que les seuils du GPS Engine (`docs/04`) : le commentaire de
+  migration reca-app (« entrée dans le rayon ») ne tranche pas explicitement entre approche et
+  travail. À reconfirmer avec le propriétaire si `reca-app` affiche un jour cette valeur de façon
+  visible et qu'elle semble fausse.
+- **`fetchAssignedMission`/`SupabaseSyncTransport` ne créent ni ne suppriment jamais rien** côté
+  serveur (cohérent avec la RLS admin-only sur INSERT/DELETE) — uniquement des `SELECT`/`UPDATE`
+  sur des lignes qui doivent déjà exister. Si `fetchAssignedMission` ne trouve aucune Mission
+  assignée (`operator_id` + `statut in (planifiee, en_cours)`), `MissionContext` retombe sur
+  `seedDemoMissionIfEmpty` (**dev uniquement** — aucune régression pour le calibrage visuel).
+- **Auth minimale ajoutée en avance sur le Sprint 017-019** : `AuthContext`/`LoginScreen`
+  (email/mot de passe via Supabase Auth) — décision du propriétaire, pas une improvisation : RLS
+  sur `missions`/`mission_items` dépend de `auth.uid()`, donc un vrai préalable, pas un détail
+  cosmétique à reporter. Pas d'écran d'inscription/réinitialisation — comptes provisionnés par un
+  admin dans `reca-app`.
+- **Pièges Jest rencontrés** :
+  - `@react-native-async-storage/async-storage` (requis par la persistance de session Supabase)
+    casse Jest (`NativeModule: AsyncStorage is null`) dès que `supabaseClient.ts` est importé
+    (chaîne `MissionContext` → `fetchAssignedMission` → `supabaseClient`, donc **tout** test qui
+    touche `MissionContext`, même indirectement). Le mock officiel de la lib
+    (`.../jest/async-storage-mock.js`) **ne s'auto-enregistre pas** — il faut le brancher via
+    `moduleNameMapper` (`^@react-native-async-storage/async-storage$` → ce fichier), pas
+    `setupFiles` (testé, ne fonctionne pas — le fichier ne contient aucun `jest.mock()`).
+  - `process.env.EXPO_PUBLIC_*` est **vide sous Jest** : le chargement de `.env.local` est un
+    mécanisme de la CLI `expo start`/`expo export` (`@expo/env`), pas de `jest` seul —
+    contrairement à `reca-app` où Vite/Vitest le fait. Fixé par `tests/setupSupabaseEnv.js`
+    (`jest.setupFiles`, valeurs factices `??=` — jamais de vrai réseau touché en test, chaque test
+    qui a besoin du client Supabase l'injecte lui-même en fake).
+  - Le faux `SupabaseClient` de test (`tests/supabaseSyncTransport.test.ts`) reproduit **les 2
+    formes d'appel exactes** utilisées par le transport réel (`.update().eq().select()` et
+    `.select().eq().eq().is()`, chaque maillon renvoyant le même objet thenable) plutôt que de
+    mocker le SDK Supabase en entier — même philosophie que `tests/testFakeDb.ts` (faux, pas mock
+    générique).
+
+## Vérification sur device réel — Mission #9 (2026-08-02)
+
+- **`@react-native-async-storage/async-storage` est un module natif** (pas juste une lib JS) :
+  ajouté au `package.json` de cette passe, mais le dev build déjà installé sur l'appareil ne le
+  contenait pas → premier lancement post-install : `[runtime not ready] NativeModule:
+  AsyncStorage is null` (même famille de piège que Mapbox au Sprint 005-006 : tout nouveau module
+  natif exige un nouveau `expo prebuild` + build Gradle, jamais juste un reload Metro).
+- **`local.properties` (`android/`, gitignored, régénéré par `prebuild`) doit utiliser des
+  slashs (`/`), pas des antislashs** : `sdk.dir=C:\Users\...` fait échouer Gradle (« La syntaxe du
+  nom de fichier... est incorrecte ») — un fichier `.properties` interprète `\` comme un
+  caractère d'échappement. Utiliser `sdk.dir=C:/Users/Francis/AppData/Local/Android/Sdk`.
+- **`ANDROID_HOME` n'est pas exporté par défaut dans ce shell**, bien que `adb` soit sur le PATH
+  (`adb.exe` vit dans `C:\Program Files\platform-tools`, un emplacement standalone — le **vrai**
+  SDK avec `build-tools`/`platforms` est sous
+  `C:\Users\Francis\AppData\Local\Android\Sdk`). Il faut l'exporter explicitement
+  (`export ANDROID_HOME=...`) **dans le même appel** que `./gradlew` (pas de persistance entre
+  deux appels Bash séparés ici — même contrainte que `MSYS_NO_PATHCONV` déjà documentée).
+- **Un `./gradlew installDebug` tué par un timeout d'outil (10 min) laisse des daemons Gradle/
+  processus `java.exe` orphelins qui continuent d'écrire sur le disque** — relancer immédiatement
+  une 2e commande dans le même dossier de build cause un échec `mergeDebugNativeLibs` (« Unable to
+  delete directory… New files were found… process is still writing »). **Fix** : `./gradlew
+  --stop` puis vérifier qu'aucun `java.exe` ne reste (`tasklist`, `taskkill /F` si nécessaire)
+  avant de relancer. Pour un premier build natif complet (comprend la compilation CMake du SDK
+  Mapbox), prévoir **5-10 minutes** — lancer en arrière-plan plutôt que dans le timeout par défaut.
+- **Metro (`expo start`) segfault (`Segmentation fault`, code de sortie 139) s'il tourne en même
+  temps qu'un build Gradle avec compilation CMake/ninja active** (contention CPU/mémoire sur cette
+  machine) — observé de façon reproductible 2 fois. **Ne pas lancer Metro et un build natif en
+  parallèle** ; attendre la fin du build Gradle avant de (re)démarrer Metro. Un « Error while
+  reading cache, falling back to a full crawl » au redémarrage suivant est bénin (cache Metro
+  invalidé par le crash précédent, pas une régression).
+- **Technique de vérification sans instrumenter le code** : pour confirmer qu'une donnée a bien
+  été écrite dans la base SQLite locale d'un dev build **sans** ajouter de `console.log` ni
+  reconstruire l'app, extraire le fichier directement depuis le stockage privé de l'app (build
+  debuggable) : `adb exec-out run-as <package> cat /data/data/<package>/files/SQLite/<db>.db >
+  local-copy.db` (**`exec-out`, pas `shell ... > file`** — la redirection de shell classique via
+  `run-as` a produit un fichier tronqué/corrompu ici, `sqlite3` refusait de l'ouvrir : « database
+  disk image is malformed ») puis interroger avec le `sqlite3` fourni par `platform-tools`.
+  **Toujours supprimer le fichier extrait immédiatement après inspection** (ne jamais le laisser
+  traîner dans le repo — il contient des données réelles, même en dev).
+- **Confirmé fonctionnel bout-en-bout** : connexion `operateur@groupereca.ca` → `fetchAssignedMission`
+  a écrit la vraie Mission #9 (id serveur `cd37ac3c-9dc6-4c0c-9b4b-3ffb690d127c`, `route`/
+  `operator` = `null` — signature qui la distingue de la Mission de démo) + ses 5 `mission_items`
+  avec adresses géocodées réelles et `contract_id` réels, tous `WAITING`.
+- **Limite découverte, pas corrigée cette passe** : la Mission de démo (créée lors d'une session
+  précédente, avant que l'auth existe) **coexiste** maintenant avec la vraie Mission #9 dans la
+  base locale — `seedDemoMissionIfEmpty` ne s'exécute que si la base est vide, donc il ne l'a pas
+  remplacée. `MissionContext` prend `missions[0]` de `missionRepo.getAll()` (ordre non garanti) :
+  ambigu tant qu'aucune vraie politique de sélection de mission active n'existe. À traiter avant
+  de brancher `MissionScreen` sur `MissionContext` (suivi dans `tasks.md`).
+- **Non vérifié cette passe** : le chemin d'écriture (transitions locales → `SupabaseSyncTransport`
+  → `reca-app`) — seul le téléchargement (lecture) a été testé sur device. `MissionScreen` ne lit
+  toujours pas `MissionContext`, donc aucune action opérateur réelle ne peut encore déclencher une
+  transition sur la vraie Mission #9 depuis l'UI.
 
 ## Système de mémoire
 

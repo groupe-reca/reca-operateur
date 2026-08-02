@@ -22,10 +22,11 @@
 - `babel.config.js` — preset `babel-preset-expo` (requis par le transform jest).
 - `eslint.config.js` — flat config `eslint-config-expo` (+ ignores `.input`, natifs, config cjs).
 - `index.ts` — enregistre le composant racine (`registerRootComponent(App)`).
-- `App.tsx` — charge les polices Manrope (`useAppFonts`) puis affiche `MissionScreenPreview` dans
-  `SafeAreaProvider` + `MissionProvider` (Sprint 007-008 — SQLite/`MissionContext`, temporaire
-  comme `MissionScreenPreview.tsx`). `ComponentGalleryScreen` reste dans le repo (référence/tests)
-  mais n'est plus le point d'entrée.
+- `App.tsx` — charge les polices Manrope (`useAppFonts`) puis, dans `SafeAreaProvider` +
+  `AuthProvider`, un `AuthGate` interne : non authentifié → `LoginScreen`, sinon
+  `MissionProvider` (Sprint 007-008 — SQLite/`MissionContext`, `employeeId` passé depuis
+  `useAuth()`) → `MissionScreenPreview` (temporaire, comme avant). `ComponentGalleryScreen` reste
+  dans le repo (référence/tests) mais n'est plus le point d'entrée.
 - `metro.config.js` — Metro Expo par défaut + `react-native-svg-transformer` (import `.svg`
   officiels comme composants React).
 - `.gitignore` — Expo + natifs générés + `.input/` + `ecosystem.config.cjs`.
@@ -95,8 +96,32 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   - `clock.ts` (Sprint 007-008) — `Clock`/`systemClock` (horloge injectable, `docs/10`).
   - `id.ts` (Sprint 007-008) — `generateId()` (UUID via `expo-crypto`).
 - `src/engines/` — moteurs métier hors React (event-based, deps injectées) :
-  - `state-machine/` (décide) · `gps/` (détecte) · `voice/` (informe) · `sync/` (transmet) ·
-    `offline/` (continuité) — tous encore vides (sprints futurs).
+  - `state-machine/` (Sprint 009-010) — autorité métier centrale (`docs/09`), **aucun React**,
+    `Db`/`Clock` injectés : `itemTransitions.ts` (graphe `MissionItemState` + `ACTIVE_ITEM_STATES`,
+    source unique de « résidence active », remplace l'ancienne constante dupliquée dans
+    `MissionContext.tsx`), `missionTransitions.ts` (graphe `MissionStatus`), `types.ts`
+    (`TransitionResult`, codes d'erreur, `TransitionOptions`), `stateMachine.ts`
+    (`createStateMachine(db, clock)` : verrou par mission, déduplication, écritures atomiques
+    MissionItem/Mission + `StateTransition` + `SyncOperation`, toutes les commandes, journal en
+    mémoire `getLog()`. `completeItem` appelle `activateNextAdmissibleItem` — Sprint 011-012,
+    correction rétroactive de `docs/09` « Activation de la résidence suivante », absente du
+    Sprint 009-010 — dans la même transaction, via le hook générique `additionalWrites` sur
+    `applyItemTransition`/`writeItemTransition`), `recovery.ts` (`recoverOnStartup` — aucun actif
+    / plusieurs actifs), `index.ts` (barrel). **Pas encore câblé** dans
+    `MissionContext`/`MissionScreen` (commandes prêtes, sans appelant réel) — le GPS Engine
+    (Sprint 011-012) est le premier vrai appelant de ces commandes.
+  - `gps/` (Sprint 011-012) — logique GPS pure (`docs/04`), aucun React, `StateMachine`/`Clock`
+    injectés : `types.ts` (`GpsPosition`, `GpsThresholds` + `DEFAULT_GPS_THRESHOLDS` — 2 valeurs
+    marquées `@assumption`, non chiffrées par `docs/04`), `distance.ts` (`haversineDistanceMeters`,
+    pur/testé), `gpsEngine.ts` (`createGpsEngine({ stateMachine, clock, thresholds? })` :
+    `setActiveResidence`/`setNextResidence`/`updatePosition`/`checkTimeout`/`on`/`getEvents` —
+    valide chaque franchissement de rayon par délai avant d'appeler les commandes du State
+    Machine), `simulator.ts` (`createGpsSimulator` — Travail explicite de cette phase, réutilise
+    le même moteur que la production), `index.ts` (barrel). **Pas encore câblé** dans
+    `MissionContext`/`MissionScreen`, pas de capteur `expo-location` réel (même limite que le
+    State Machine).
+  - `voice/` (informe) · `sync/` (transmet) · `offline/` (continuité) — encore vides (sprints
+    futurs).
   - `map/mapCameraConfig.ts` (Sprint 005-006) — **seule partie du Map Engine réellement « sans
     React »** : constantes caméra (pitch, durées, paliers de zoom), `zoomForState` (pur, testé),
     `cameraPaddingTopFor` (dérive l'offset caméra pour l'ancre du tracteur). Le rendu Mapbox
@@ -104,11 +129,18 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     l'idéal « moteur sans React » de `docs/02`, notée dans `memory.md` (API `@rnmapbox/maps`
     intrinsèquement basée sur des composants).
 - `src/context/`
-  - `MissionContext.tsx` (Sprint 007-008) — `MissionProvider`/`useMissionContext()` : charge au
-    montage (migrations → seed démo si vide → session ouverte → lecture), expose `mission`/
-    `activeMissionItem`/`nextMissionItems`/`gpsState`/`synchronizationState`/`offlineState`
-    (3 derniers = **placeholders typés**, aucun moteur réel derrière). `deriveActiveAndNext`
-    (exporté, pur, testé) : résidence active + suivantes, indépendant de React/DB.
+  - `MissionContext.tsx` (Sprint 007-008, étendu 2026-08-02) — `MissionProvider`/
+    `useMissionContext()` : charge au montage (migrations → **`fetchAssignedMission` si
+    `employeeId` fourni, sinon/en repli seed démo si vide** → session ouverte → lecture), expose
+    `mission`/`activeMissionItem`/`nextMissionItems`/`gpsState`/`synchronizationState`/
+    `offlineState` (3 derniers = **placeholders typés**, aucun moteur réel derrière).
+    `deriveActiveAndNext` (exporté, pur, testé) : résidence active + suivantes, indépendant de
+    React/DB — utilise `isActiveItemState` du State Machine (Sprint 009-010) plutôt qu'une
+    constante dupliquée.
+  - `AuthContext.tsx` (2026-08-02) — `AuthProvider`/`useAuth()` : session Supabase Auth
+    (email/mot de passe), résout `employeeId` (`employees.user_id = auth.uid()`) une fois par
+    session. Seul point d'entrée authentification — aucun composant n'appelle
+    `supabase.auth.*` directement.
 - `src/persistence/` (Sprint 007-008, stockage local-first via **`expo-sqlite`**) :
   - `types.ts` — `Db`/`SqlParam` : surface minimale injectée (get-all/get-by-id/upsert/delete +
     transaction), jamais `expo-sqlite` importé ailleurs que dans `db.ts`.
@@ -126,7 +158,20 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   - `mapbox/mapboxClient.ts` (Sprint 005-006) — point de contact unique du token public, seul
     endroit hors `components/map/` qui importe `@rnmapbox/maps` directement.
   - `mapbox/suggestedRoute.ts` — appel Directions API + repli ligne droite, pur/testable.
-  - Reste (Supabase, TTS) : vide, sprints futurs.
+  - `supabase/supabaseClient.ts` (2026-08-02) — point de contact unique du client Supabase
+    (même projet que RECA App), session persistée via `AsyncStorage`. Seul endroit hors ce
+    dossier qui importe `@supabase/supabase-js` directement.
+  - `supabase/statusMapping.ts` — traduction pure et testée statut local ↔ serveur
+    (`toServerItemStatutOperateur`/`toServerItemStatus`/`toServerMissionStatus`). `CANCELLED`
+    (jamais censé être produit par l'opérateur, règle métier confirmée 2026-08-02) lève
+    `UnsupportedStatusError` plutôt qu'un mapping silencieux.
+  - `supabase/supabaseSyncTransport.ts` — `SyncTransport` réel pour le Sync Engine
+    (Sprint 013-014) : UPDATE partiel `missions`/`mission_items` (jamais INSERT/DELETE — RLS
+    admin-only), classification erreurs Postgres `TEMPORARY`/`PERMANENT`.
+  - `supabase/fetchAssignedMission.ts` — télécharge la Mission assignée à l'opérateur (+
+    `mission_items` joints à `contracts`/`clients`) et la seed localement avec les **vrais id
+    serveur** (jamais régénérés). `mapServerMissionToLocal` exportée séparément (pure, testée).
+  - TTS : vide, sprint futur.
 - `src/services/` — orchestration (Authentication, Mission Loader…). Vide.
 - `src/hooks/` — hooks React minces (adaptateurs de moteurs/contexte). Vide.
 - `src/types/`
@@ -164,6 +209,16 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - `tests/testFakeDb.ts` (Sprint 007-008) — faux `Db` en mémoire (pas un mock Jest auto — importé
   directement dans les tests), assez de logique réelle (Map par table, upsert = overwrite) pour
   tester le vrai comportement des repositories sans base ni module natif.
+- `tests/stateMachine.test.ts` (Sprint 009-010, étendu Sprint 011-012) — 17 tests du moteur State
+  Machine : succès/refus/doublon/hors-ligne (`globalThis.fetch` jamais appelé)/journalisation
+  (`getLog()`) pour chaque transition prioritaire de `docs/11` Phase 06, plus résidences
+  adjacentes, pause/reprise Mission, problème/résolution, skip/reprise, récupération après
+  redémarrage (0 actif / 2 actifs), activation automatique de la résidence suivante après
+  complétion (2 tests ajoutés au Sprint 011-012).
+- `tests/gpsEngine.test.ts` (Sprint 011-012) — 12 tests du moteur GPS : distance connue, zones
+  EN ROUTE→APPROCHE→EN COURS→TERMINÉE avec délais de validation (respectés/réinitialisés si sortie
+  prématurée), `detectionRadiusMeters` par résidence, résidence adjacente, filtrage de précision,
+  stabilisation du cap, perte/retour GPS (aucune transition métier), 2 tests via `GpsSimulator`.
 - `tests/__mocks__/svgMock.tsx` — stub Jest pour les imports `.svg`.
 - `tests/__mocks__/lucideMock.js` — stub Jest pour `lucide-react-native` (Proxy → icône no-op ;
   fichier `.js` volontairement, hors du typecheck TS — voir `tsconfig.include`).
@@ -174,6 +229,18 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - `tests/__mocks__/expoCryptoMock.js` (Sprint 007-008) — stub Jest pour `expo-crypto` : le vrai
   `randomUUID()` natif retourne silencieusement `undefined` sous Jest (aucune erreur) — ce mock
   génère de vrais UUID v4 en JS pur.
+- `tests/statusMapping.test.ts` (2026-08-02) — mapping pur local↔serveur, dont `CANCELLED` →
+  `UnsupportedStatusError` et `terminee`/`terminee_avec_anomalies` selon items non résolus.
+- `tests/supabaseSyncTransport.test.ts` (2026-08-02) — client Supabase factice minimal (mêmes
+  2 formes d'appel exactes que le transport réel, pas le SDK mocké en entier) : succès, RLS
+  (42501)→PERMANENT, 0 ligne mise à jour→PERMANENT, erreur inconnue→TEMPORARY, `CANCELLED`
+  jamais envoyé au réseau, dérivation `terminee`/`terminee_avec_anomalies`.
+- `tests/fetchAssignedMission.test.ts` (2026-08-02) — `mapServerMissionToLocal` pure : ids serveur
+  préservés, mapping `statut`→`Mission.status`, les 7 `statut_operateur`→`MissionItemState`,
+  repli adresse quand le join `contracts` est absent.
+- `tests/setupSupabaseEnv.js` (2026-08-02, `jest.setupFiles`) — fournit des valeurs factices pour
+  `EXPO_PUBLIC_SUPABASE_URL`/`ANON_KEY` sous Jest (l'auto-loading `.env.local` est un mécanisme
+  `expo start`, pas du simple `jest`).
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)
@@ -191,4 +258,8 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   réutilisé de `reca-operator`, secret Downloads:Read nouveau (build natif uniquement).
 - **Stockage (Sprint 007-008)** : `expo-sqlite` (base locale, native mais ne casse rien de plus —
   Expo Go déjà hors-jeu depuis Mapbox), `expo-crypto` (UUID — voir piège Jest dans `memory.md`).
-- À venir : client Supabase, TTS.
+- **Supabase (2026-08-02)** : `@supabase/supabase-js`, `@react-native-async-storage/async-storage`
+  (persistance de session — mock Jest requis, voir `memory.md`), `react-native-url-polyfill`
+  (requis par le SDK Supabase en environnement RN, importé en side-effect dans
+  `supabaseClient.ts`). Même projet Supabase que RECA App.
+- À venir : TTS.

@@ -169,10 +169,93 @@
   par un mock Jest dédié (`tests/__mocks__/expoCryptoMock.js`, vrai générateur UUID v4 en JS pur).
   **Non vérifié visuellement** : la vraie preuve de survie au redémarrage nécessite de fermer/
   rouvrir l'app sur le dev build du propriétaire (pas testable depuis ce VPS).
-- [ ] **Sprint 009-010 — State Machine** (Phase 06) : transitions + invariants + résidences
-  adjacentes, avec tests obligatoires (succès/refus/doublon/récupération/hors-ligne/journal).
-- [ ] **Sprint 011-012 — GPS Engine** (Phase 07) : simulé puis réel.
-- [ ] **Sprint 013-014 — Synchronization Engine + Intégration RECA App** (Phase 08).
+- [x] **Sprint 009-010 — State Machine** (Phase 06, 2026-08-01). Moteur pur
+  (`src/engines/state-machine/`), aucun React, `Db`/`Clock` injectés. **Graphes de transitions**
+  Mission (`ASSIGNED/READY/IN_PROGRESS/PAUSED/COMPLETED/CANCELLED`) et MissionItem
+  (`WAITING/EN_ROUTE/APPROACHING/IN_PROGRESS/COMPLETED/PROBLEM/SKIPPED/CANCELLED`) repris
+  verbatim de `docs/09`. **Commandes** : `startEnRoute`/`enterApproach`/`enterWork`/
+  `completeItem`/`reportProblem`/`resolveProblem`/`skipItem`/`resumeSkipped`/
+  `enterAdjacentResidence`/`requestMissionStart|Pause|Resume|Complete`/`recoverOnStartup` —
+  chacune valide (invariant « une résidence active », dédoublonnage, mission en pause) puis écrit
+  atomiquement (`Db.withTransactionAsync`) MissionItem/Mission + `StateTransition` +
+  `SyncOperation` (file locale, aucun appel réseau). **Verrou** : file de promesses par mission
+  (`Map<missionId, Promise>`), sérialise toute commande touchant la même mission. **Résidences
+  adjacentes** : transaction unique A→COMPLETED + B→IN_PROGRESS (temps de trajet artificiel 5 s,
+  marqué via le champ `reason` existant — aucune nouvelle colonne SQL). **Récupération** : aucun
+  actif → active le premier WAITING admissible (source `RECOVERY`) ; plusieurs actifs → conserve
+  le plus avancé, ramène les autres à `WAITING` (écriture administrative hors du graphe normal,
+  toujours journalisée). **`ACTIVE_STATES` migrée** de `MissionContext.tsx` vers
+  `itemTransitions.ts` (`ACTIVE_ITEM_STATES`) — source unique de la règle « résidence active ».
+  **Portée volontairement exclue** : validation précision/délai GPS (responsabilité du futur GPS
+  Engine, Sprint 011-012) ; mode simulation/UI développeur (Sprint 017-019) ; câblage dans
+  `MissionContext`/`MissionScreen` (les commandes existent mais n'ont pas encore d'appelant réel —
+  un futur sprint les branchera). Vérifié sur le VPS : `tsc`/`eslint` propres, `jest` 42/42 verts
+  (5 suites, dont `tests/stateMachine.test.ts` — 15 tests : succès/refus/doublon/hors-ligne/
+  journalisation par transition prioritaire + adjacence + pause/reprise + problème/résolution +
+  skip/reprise + récupération 0/2 actifs).
+- [x] **Sprint 011-012 — GPS Engine** (Phase 07, 2026-08-01). Moteur pur (`src/engines/gps/`),
+  aucun React, `StateMachine`/`Clock` injectés. **Calcul de distance** : `haversineDistanceMeters`
+  (pur, testé). **Seuils par défaut** (`docs/04`) : approche 250 m, début intervention 30 m
+  (remplacé par le `detectionRadiusMeters` propre à la résidence quand présent — interprétation
+  retenue pour ce champ, `docs/03` ne précisait pas lequel des 3 rayons il représente), fin
+  intervention 50 m, validation entrée/sortie rayon 5 s chacune, validation cap 3 s, trajet
+  fictif adjacent 5 s. **2 hypothèses non chiffrées par `docs/04`, marquées comme telles** (à
+  valider par le propriétaire) : précision GPS maximale acceptée (50 m par défaut) et délai de
+  détection de perte de signal (15 s par défaut). **Machine à validation par délai** (`validate`) :
+  un candidat de transition doit être revu identique après le délai requis avant d'être accepté —
+  même schéma pour l'entrée en rayon (approche/travail/adjacence) et la stabilisation du cap.
+  **Le moteur appelle directement** les commandes du State Machine (`enterApproach`/`enterWork`/
+  `completeItem`/`enterAdjacentResidence`) une fois validé — jamais d'écriture directe. **Perte/
+  retour GPS** (`checkTimeout`, appelé périodiquement par l'appelant — le moteur ne possède aucun
+  timer propre) : événements `GpsLost`/`GpsRecovered` publiés, **aucune transition métier
+  déclenchée** (conforme `docs/04`). **Simulateur** (`simulator.ts`, `createGpsSimulator`) :
+  Travail explicite de cette phase (pas différé comme le mode simulation du State Machine) —
+  réutilise le **même** moteur que la production. **Correction rétroactive découverte en testant**
+  (pas un ajout de portée) : `docs/09` « Activation de la résidence suivante » n'avait **jamais
+  été implémentée** au Sprint 009-010 — `completeItem` ne faisait que compléter l'item courant,
+  sans activer le prochain WAITING admissible en EN_ROUTE. Corrigé dans `stateMachine.ts`
+  (`activateNextAdmissibleItem`, même transaction que la complétion, via un nouveau hook
+  `additionalWrites`) — le GPS Engine en dépend directement (il n'a pas besoin d'appeler
+  `startEnRoute` lui-même après une complétion). **Portée exclue** : capteur `expo-location` réel,
+  test sur appareil physique, câblage `MissionContext`/`MissionScreen` (même décision que le State
+  Machine — commandes prêtes, sans appelant réel). Vérifié sur le VPS : `tsc`/`eslint` propres,
+  `jest` 56/56 verts (6 suites, dont `tests/gpsEngine.test.ts` — 12 tests : distance, zones EN
+  ROUTE→APPROCHE→EN COURS→TERMINÉE avec délais, rayon par résidence, adjacence, filtrage
+  précision, stabilisation cap, perte/retour GPS, 2 via le simulateur ; `tests/stateMachine.test.ts`
+  passé à 17/17 avec les 2 nouveaux tests d'activation automatique).
+- [x] **Sprint 013-014 — Synchronization Engine** (Phase 08, 2026-08-02, **portée locale
+  uniquement**). `reca-app` inaccessible sur cette machine (aucun autre dépôt cloné, aucune
+  credential Supabase) → question posée au propriétaire, réponse : moteur local avec transport
+  réseau **injecté** (`SyncTransport`), vrai câblage Supabase reporté à une tâche de suivi
+  explicite (voir « À vérifier » ci-dessous) une fois `reca-app`/credentials accessibles. Moteur
+  pur (`src/engines/sync/`), aucun React. **`SyncOperation` étendue** (`src/domain/entities.ts`,
+  migration additive de `sync_operations`) : `missionId`/`missionItemId`/`localSequence`/
+  `attemptCount`/`idempotencyKey` (= le même `id` local, pas de second identifiant)/
+  `lastAttemptAt`/`nextAttemptAt`/`lastErrorCode`/`lastErrorMessage`, statut aligné sur `docs/07`
+  (`PENDING/PROCESSING/CONFIRMED/FAILED/BLOCKED`, renommage de `SYNCED`→`CONFIRMED`). **State
+  Machine ajusté en conséquence** (`buildSyncOperation` déplacée dans sa closure, devient async,
+  calcule `localSequence` via un compteur en mémoire par mission réamorcé depuis le max persisté).
+  **Le moteur ne fait que traiter la file** (`runSyncCycle`) — les producteurs (State Machine)
+  écrivent déjà dans `sync_operations` au sein de leur propre transaction ; **décision retenue** :
+  chaque transition écrit un **snapshot complet de l'entité** (pas un événement typé à grain fin
+  comme `ITEM_STARTED` listé en exemple par `docs/07`) — naturellement idempotent, pas de
+  mécanisme de résolution supplémentaire à inventer. **Ordre strict par mission** (`localSequence`),
+  **priorité seulement entre missions indépendantes** (`selectBatch`, ne casse jamais l'ordre
+  intra-mission). **Réessais** : attente progressive (0/5/15/30/60 s puis plafond) + gigue
+  injectable, `BLOCKED` après `maxAttempts` ou erreur permanente immédiate (aucun réessai).
+  **Récupération démarrage** : `PROCESSING`→`PENDING`. **`SynchronizationState`** exposée
+  (`SYNCED/SYNCING/OFFLINE/PENDING/ERROR` + compteurs), `NetworkStatusProvider` injecté (pas de
+  vrai `NetInfo`). **Portée explicitement exclue** (raisons : système absent ou dépendant du vrai
+  serveur) : authentification expirée (pas de système d'auth, Sprint 017-019), médias (jamais
+  implémentés), conflits de version (politique dépend du schéma `reca-app`), horloge appareil
+  incorrecte (nécessite un round-trip serveur réel), espace disque faible (hors Travaux explicites
+  de cette phase) ; pas de câblage `MissionContext`/`MissionScreen` (même décision que State
+  Machine/GPS Engine). Vérifié sur le VPS : `tsc`/`eslint` propres, `jest` 72/72 verts (7 suites,
+  dont `tests/syncEngine.test.ts` — 16 tests : backoff, priorité/ordre, mission en ligne/hors
+  ligne, réseau intermittent, serveur indisponible→`BLOCKED`, opération invalide→`BLOCKED`
+  immédiat, lot partiellement accepté, doublon/réponse perdue — effet réel compté 1 seule fois
+  malgré 2 envois —, récupération `PROCESSING`, 250 opérations en lots ordonnés, réessai manuel,
+  intégration bout-en-bout avec le State Machine réel sur le cas résidences adjacentes).
 - [ ] **Sprint 015 — Offline Mode** (Phase 09).
 - [ ] **Sprint 016 — Voice Engine** (Phase 10).
 - [ ] **Sprint 017-019 — Auth, mission assignée, fin de mission, mode développement** (Phase 11).
@@ -274,6 +357,44 @@
   (celui de la pile de contrôles carte `rightColumn` suffit). Widget météo déplacé dans
   `rightColumn`, sous cette pile. `leftColumn` ne flotte plus que pour l'état PROBLEM. Vérifié
   sur device : plus de doublon sur les 4 variantes. `tsc`/`eslint`/`jest` (27/27) verts.
+- [x] **Câblage Supabase réel — suivi explicite du Sprint 013-014** (2026-08-02) : `reca-app`
+  rendu accessible + credentials Supabase fournis par le propriétaire. Voir plan archivé
+  `plans.md` pour le détail complet (mapping de statut, 3 blocages soumis au propriétaire,
+  réponses reçues, dont la nouvelle règle métier « Fermer la mission »). Livré : écran de login
+  minimal (`AuthContext`/`LoginScreen`), `fetchAssignedMission` (télécharge la vraie Mission
+  assignée + ses `mission_items` avec les **vrais id serveur**), `SupabaseSyncTransport` (UPDATE
+  partiel `missions`/`mission_items`, classification erreurs Postgres), `statusMapping.ts` pur et
+  testé. `tsc`/`eslint`/`jest` (91/91, 10 suites)/`expo-doctor` (20/20) verts.
+  **Vérifié sur device réel (2026-08-02)** : connexion avec `operateur@groupereca.ca` sur la
+  Mission #9 réelle (créée par le propriétaire dans `reca-app`) → inspection directe du fichier
+  SQLite pull depuis l'appareil (`adb exec-out run-as ... cat`, DB toujours privée à l'app,
+  jamais dans le repo) confirme que `fetchAssignedMission` a bien écrit la vraie Mission (id
+  serveur `cd37ac3c-...`, `route`/`operator` = `null` — signature du mapping réel, jamais démo)
+  et ses 5 `mission_items` avec adresses géocodées réelles (148/168/220/305/725 Rue Scott,
+  Saint-Jérôme) et `contract_id` réels, tous `WAITING`. Authentification → résolution
+  `employeeId` → requête RLS-protégée → écriture locale fonctionnent bout-en-bout. **Piège de
+  build rencontré** : `@react-native-async-storage/async-storage` (ajouté cette passe) est un
+  module natif — le dev build existant sur l'appareil ne le contenait pas
+  (`NativeModule: AsyncStorage is null` au premier lancement), a nécessité un nouveau
+  `expo prebuild` + `gradlew installDebug` (voir `memory.md` pour les pièges de build rencontrés).
+- [ ] **Suivi ouvert — bouton « Fermer la mission »** : `requestMissionComplete` (State Machine,
+  Sprint 009-010) est déjà câblé côté serveur par cette passe (`SupabaseSyncTransport` sait
+  pousser `Mission.status === 'COMPLETED'` → `terminee`/`terminee_avec_anomalies`), mais **aucune
+  UI ne l'appelle encore** — `Mission`/`Plus` restent des onglets placeholders (Sprint 003/004).
+  Nécessite un vrai écran avant de fermer cette tâche.
+- [x] **Vérification sur device avec une vraie Mission** (2026-08-02) : fait, voir ci-dessus —
+  Mission #9 confirmée téléchargée avec succès. **Reste ouvert** : n'a vérifié que le
+  téléchargement (lecture) ; la synchronisation retour (écriture — transitions locales vers
+  `reca-app`) n'a **pas** été testée bout-en-bout sur device (nécessite de faire progresser la
+  Mission via `MissionScreen`, qui ne lit pas encore `MissionContext` — voir suivi ci-dessous).
+- [ ] **Suivi ouvert — deux Missions coexistent en local (Mission démo + Mission #9 réelle)** :
+  `seedDemoMissionIfEmpty` ne s'est pas déclenché (base déjà non-vide depuis une session
+  précédente), donc la Mission de démo (`Route 12A`/« Opérateur Démo ») reste dans la base à
+  côté de la vraie Mission #9. `MissionContext` prend `missions[0]` de `missionRepo.getAll()`
+  (ordre non garanti, probablement insertion) — ambigu tant qu'un vrai mécanisme de sélection
+  n'existe pas. Pas un bug de cette passe (portée = câblage transport, pas gestion du cycle de
+  vie multi-mission), mais à traiter avant que `MissionScreen` consomme réellement
+  `MissionContext`.
 
 ## Suivi / limitations déclarées
 

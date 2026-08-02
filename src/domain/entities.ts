@@ -61,7 +61,10 @@ export type StateTransition = {
   reason: string | null;
 };
 
-export type SyncOperationStatus = 'PENDING' | 'SYNCED' | 'FAILED';
+// docs/07-Synchronization.md "Structure d'une opération" — status vocabulary
+// matches the doc exactly (renamed from the Sprint 007-008 placeholder
+// `SYNCED` to `CONFIRMED`, nothing outside this domain read that value yet).
+export type SyncOperationStatus = 'PENDING' | 'PROCESSING' | 'CONFIRMED' | 'FAILED' | 'BLOCKED';
 
 export type SyncOperation = {
   id: string;
@@ -72,6 +75,19 @@ export type SyncOperation = {
   status: SyncOperationStatus;
   createdAt: string;
   syncedAt: string | null;
+  // Sprint 013-014 additions — docs/07's own `SyncOperation` example type.
+  // `idempotencyKey` is deliberately the same value as `id` (already a
+  // stable locally-generated UUID, see docs/10 "Identifiants") rather than a
+  // second invented identifier.
+  missionId: string | null;
+  missionItemId: string | null;
+  localSequence: number;
+  attemptCount: number;
+  idempotencyKey: string;
+  lastAttemptAt: string | null;
+  nextAttemptAt: string | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
 };
 
 export type OperatorSession = {

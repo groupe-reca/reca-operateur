@@ -3,12 +3,14 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { systemClock } from '@/domain/clock';
 import type { Mission, MissionItem, OperatorSession } from '@/domain/entities';
 import { generateId } from '@/domain/id';
+import { isActiveItemState } from '@/engines/state-machine';
 import { getDb } from '@/persistence/db';
 import { createMissionItemRepository } from '@/persistence/repositories/missionItemRepository';
 import { createMissionRepository } from '@/persistence/repositories/missionRepository';
 import { createOperatorSessionRepository } from '@/persistence/repositories/operatorSessionRepository';
 import { seedDemoMissionIfEmpty } from '@/persistence/seedDemoMission';
 import type { Db } from '@/persistence/types';
+import { fetchAssignedMission } from '@/integrations/supabase/fetchAssignedMission';
 
 // Placeholders — no real engine exists yet for these (GPS: Sprint 011-012,
 // Synchronization: 013-014, Offline: 015). Typed now to match the Roadmap's
@@ -31,16 +33,15 @@ export type MissionContextValue = {
 
 const MissionReactContext = createContext<MissionContextValue | null>(null);
 
-// docs/09-State-Machine.md "Résidence active": états considérés actifs.
-const ACTIVE_STATES = new Set(['EN_ROUTE', 'APPROACHING', 'IN_PROGRESS']);
-
 // Pure — directly testable without React/DB. docs/03: "une seule résidence
 // active"; the rest of the waiting ones are shown as "next" in mission order.
+// "Active" here is the state-machine engine's own rule (docs/09 "Résidence
+// active"), not redefined here — single source of truth.
 export function deriveActiveAndNext(items: MissionItem[]): {
   activeMissionItem: MissionItem | null;
   nextMissionItems: MissionItem[];
 } {
-  const activeMissionItem = items.find((item) => ACTIVE_STATES.has(item.status)) ?? null;
+  const activeMissionItem = items.find((item) => isActiveItemState(item.status)) ?? null;
   const nextMissionItems = items
     .filter((item) => item.id !== activeMissionItem?.id && item.status === 'WAITING')
     .sort((a, b) => a.ordre - b.ordre);
@@ -51,9 +52,15 @@ type Props = {
   children: ReactNode;
   // Injectable for tests — defaults to the real singleton connection.
   getDbOverride?: () => Promise<Db>;
+  // Set once the operator is authenticated (AuthContext.employeeId). When
+  // present, a real assigned mission is fetched from Supabase and takes
+  // priority; seedDemoMissionIfEmpty stays the dev-only fallback (no
+  // assigned mission found, or fetch failed — local-first, never blocks the
+  // screen on a network error).
+  employeeId?: string | null;
 };
 
-export function MissionProvider({ children, getDbOverride }: Props) {
+export function MissionProvider({ children, getDbOverride, employeeId }: Props) {
   const [mission, setMission] = useState<Mission | null>(null);
   const [items, setItems] = useState<MissionItem[]>([]);
   const [session, setSession] = useState<OperatorSession | null>(null);
@@ -64,7 +71,20 @@ export function MissionProvider({ children, getDbOverride }: Props) {
 
     async function load() {
       const db = await (getDbOverride ?? getDb)();
-      await seedDemoMissionIfEmpty(db, systemClock);
+
+      let assigned: Awaited<ReturnType<typeof fetchAssignedMission>> = null;
+      if (employeeId) {
+        try {
+          assigned = await fetchAssignedMission(employeeId, db, systemClock);
+        } catch {
+          // Network/RLS failure — local-first (docs/07): never block the
+          // screen, fall back to whatever is already on the device.
+          assigned = null;
+        }
+      }
+      if (!assigned) {
+        await seedDemoMissionIfEmpty(db, systemClock);
+      }
 
       const missionRepo = createMissionRepository(db);
       const itemRepo = createMissionItemRepository(db);
@@ -97,7 +117,7 @@ export function MissionProvider({ children, getDbOverride }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [getDbOverride]);
+  }, [getDbOverride, employeeId]);
 
   const { activeMissionItem, nextMissionItems } = useMemo(() => deriveActiveAndNext(items), [items]);
 

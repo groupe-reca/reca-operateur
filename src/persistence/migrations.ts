@@ -59,6 +59,10 @@ const STATEMENTS: string[] = [
     longitude REAL,
     reason TEXT
   )`,
+  // Sprint 013-014 — full docs/07 "Structure d'une opération" shape. No
+  // ALTER-based upgrade path: this table has no real users yet (see
+  // memory.md), so redefining CREATE TABLE is enough — an ALTER path is a
+  // future concern once the schema needs to change under real field data.
   `CREATE TABLE IF NOT EXISTS sync_operations (
     id TEXT PRIMARY KEY,
     entity_type TEXT NOT NULL,
@@ -67,7 +71,16 @@ const STATEMENTS: string[] = [
     payload TEXT NOT NULL,
     status TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    synced_at TEXT
+    synced_at TEXT,
+    mission_id TEXT,
+    mission_item_id TEXT,
+    local_sequence INTEGER NOT NULL,
+    attempt_count INTEGER NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    last_attempt_at TEXT,
+    next_attempt_at TEXT,
+    last_error_code TEXT,
+    last_error_message TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS operator_sessions (
     id TEXT PRIMARY KEY,
