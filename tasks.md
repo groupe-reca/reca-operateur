@@ -269,6 +269,11 @@
   boutons d'action restent coupés par `overflow:hidden` sur cet appareil étroit — chrono figé
   visible, boutons « Reprendre plus tard »/« Passer à la suivante » non — voir détail et pistes
   dans `memory.md`.
+- [x] **Doublon « Recentrer » + météo mal placée** (2026-08-02) : sur signalement de
+  l'utilisateur, retrait du `FloatingActionButton` « Recentrer » en double dans `leftColumn`
+  (celui de la pile de contrôles carte `rightColumn` suffit). Widget météo déplacé dans
+  `rightColumn`, sous cette pile. `leftColumn` ne flotte plus que pour l'état PROBLEM. Vérifié
+  sur device : plus de doublon sur les 4 variantes. `tsc`/`eslint`/`jest` (27/27) verts.
 
 ## Suivi / limitations déclarées
 

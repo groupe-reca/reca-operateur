@@ -91,14 +91,15 @@ export function MissionScreen({ state }: Props) {
           </View>
         ) : null}
 
-        <View style={[styles.leftColumn, { left: insets.left + screenMargin, top: columnsTop }]}>
-          {/* The former CurrentResidenceProgressCard (état + chrono + adresse +
-              checklist) was removed — état/chrono now live in MissionCard's
-              third stat, and the address is already shown below in
-              CurrentResidenceSheet (2026-08-02 simplification, see
-              memory.md). ProblemStateCard stays: it carries problem-specific
-              info (type/note/frozen timer) that isn't shown anywhere else. */}
-          {state.activeState === 'PROBLEM' && state.problem ? (
+        {/* The former CurrentResidenceProgressCard (état + chrono + adresse +
+            checklist) was removed — état/chrono now live in MissionCard's
+            third stat, and the address is already shown below in
+            CurrentResidenceSheet (2026-08-02 simplification, see memory.md).
+            ProblemStateCard is the only thing left here: problem-specific
+            info (type/note/frozen timer) not shown anywhere else. Nothing
+            floats on the left for the other 3 states. */}
+        {state.activeState === 'PROBLEM' && state.problem ? (
+          <View style={[styles.leftColumn, { left: insets.left + screenMargin, top: columnsTop }]}>
             <ProblemStateCard
               address={state.address}
               problemType={state.problem.type}
@@ -107,8 +108,19 @@ export function MissionScreen({ state }: Props) {
               onNext={() => {}}
               onResumeLater={() => {}}
             />
-          ) : null}
-          <FloatingActionButton icon={Crosshair} label="Recentrer" onPress={handleRecenter} />
+          </View>
+        ) : null}
+
+        <View style={[styles.rightColumn, { right: insets.right + screenMargin, top: columnsTop }]}>
+          <View style={styles.mapControls}>
+            <FloatingActionButton icon={Crosshair} size={44} onPress={handleRecenter} accessibilityLabel="Recentrer" />
+            <FloatingActionButton icon={Layers} size={44} onPress={() => {}} accessibilityLabel="Couches" />
+            <FloatingActionButton icon={Plus} size={44} onPress={() => {}} accessibilityLabel="Zoom avant" />
+            <FloatingActionButton icon={Minus} size={44} onPress={() => {}} accessibilityLabel="Zoom arrière" />
+          </View>
+          {/* Weather: moved from the left column (where it duplicated this
+              same column's "Recentrer" FAB) to sit quietly under the map
+              controls instead of floating alone over the map content. */}
           <GlassCard level="chip" radius="lg" style={styles.weatherPill}>
             <Icon icon={CloudSnow} color={colors.textSecondary} size={20} />
             <View>
@@ -118,15 +130,6 @@ export function MissionScreen({ state }: Props) {
               </Txt>
             </View>
           </GlassCard>
-        </View>
-
-        <View style={[styles.rightColumn, { right: insets.right + screenMargin, top: columnsTop }]}>
-          <View style={styles.mapControls}>
-            <FloatingActionButton icon={Crosshair} size={44} onPress={handleRecenter} accessibilityLabel="Recentrer" />
-            <FloatingActionButton icon={Layers} size={44} onPress={() => {}} accessibilityLabel="Couches" />
-            <FloatingActionButton icon={Plus} size={44} onPress={() => {}} accessibilityLabel="Zoom avant" />
-            <FloatingActionButton icon={Minus} size={44} onPress={() => {}} accessibilityLabel="Zoom arrière" />
-          </View>
           {state.tasks ? (
             <ResidenceTasksCard stateLabel={state.stateLabel} tasks={state.tasks} estimatedTime={state.estimatedTaskTime ?? ''} />
           ) : null}

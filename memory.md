@@ -603,6 +603,28 @@
   (toolbar en overlay), `ComponentGalleryScreen.tsx`/`tests/components.test.tsx` (appels mis à
   jour pour les nouveaux props `MissionCard`).
 
+## Doublon « Recentrer » + météo mal placée (2026-08-02)
+
+- **Constat de l'utilisateur (validé)** : deux boutons « Recentrer » sur la carte —
+  `leftColumn` avait un `FloatingActionButton` étiqueté « Recentrer », `rightColumn` avait déjà
+  un bouton identique (icône seule) empilé avec Couches/Zoom+/Zoom−. Le widget météo (`-8°C ·
+  Neige modérée`), lui aussi dans `leftColumn`, flottait seul par-dessus la carte sans lien
+  logique avec le reste.
+- **Fix (`MissionScreen.tsx`)** : le `FloatingActionButton` « Recentrer » de `leftColumn`
+  supprimé (celui de `rightColumn`, dans la pile de contrôles carte, suffit). Le widget météo
+  déplacé dans `rightColumn`, sous la pile Recentrer/Couches/Zoom, au-dessus de
+  `ResidenceTasksCard` (quand présente) — regroupé avec les autres éléments utilitaires de la
+  carte plutôt que seul à gauche.
+- **Conséquence** : `leftColumn` ne flotte plus **que** pour l'état PROBLEM (`ProblemStateCard`)
+  — rien ne flotte à gauche pour les 3 autres états, conforme à la demande de ne pas remplir
+  l'écran d'éléments inutiles. Le style `leftColumn` (`position:absolute`, `width:220`) n'est
+  donc conditionné que par ce rendu.
+- **Vérifié sur device** : plus de doublon sur les 4 variantes. La météo, en bas de la colonne
+  droite, est coupée proprement par `overflow:hidden` de `mapArea` sur EN COURS/PROBLÈME (peu
+  d'espace vertical restant, même contrainte déjà documentée) — mais elle ne bloque plus rien
+  quand elle est coupée, contrairement à avant où elle était seule et visible en plein milieu de
+  la carte. `tsc`/`eslint`/`jest` (27/27) verts.
+
 ## Contrainte de vérification (ce VPS) — corrigée (2026-08-02)
 
 - **Ancienne hypothèse invalidée** : ce dépôt tourne en réalité sur une **machine Windows** (pas
