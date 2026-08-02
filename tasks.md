@@ -210,6 +210,29 @@
   écran — remplacés par une vraie barre flex en haut d'écran (plus de pixel deviné). Reste
   possible : widget météo/bouton recentrer coupés si l'espace carte est encore serré sur d'autres
   tailles d'écran — à surveiller au prochain test.
+- [x] **Deuxième calibrage visuel réel — TECNO KL4 (360×800dp)** (2026-08-02) : boucle complète
+  prebuild/build/install/Metro/capture/comparaison contre `mock-encours.png` (variante « En
+  cours »), exécutée entièrement depuis cette machine (voir correction dans `memory.md` — ce
+  n'est pas un VPS headless, `adb`/JDK 17/SDK Android y sont disponibles). **Bug critique
+  trouvé et corrigé** : `mapArea.minHeight: 220` (`MissionScreen.tsx`) pouvait forcer le total du
+  layout à dépasser la hauteur d'écran quand header+`MissionCard`+overlays du haut et feuille
+  résidence+barre d'onglets du bas réclamaient déjà tout l'espace — poussant **la barre
+  d'onglets entière hors de l'écran physique** (layout non scrollable). Réduit à `minHeight: 60`
+  → le panneau du bas (donc la navigation) reste désormais **toujours** accessible, quel que soit
+  le contenu du haut. Corrigé aussi : `onDetails` jamais câblé sur `MissionCard` (bouton
+  « Détails » absent, remplacé par un pill « Synchronisé » permanent, contrairement à la
+  maquette) ; `SyncIndicator` masqué à l'état nominal `synced` (ne s'affiche que si
+  `pending`/`syncing`/`offline`/`error`) ; retours à la ligne parasites sur le titre/la ligne méta
+  de `MissionCard` et débordement de la valeur `TEMPS` (état PROBLÈME) — tous corrigés par
+  `numberOfLines`/`adjustsFontSizeToFit`. Resserrements de tokens `spacing` existants (un cran
+  plus petit, aucune valeur inventée) sur `MissionCard`/`CurrentResidenceProgressCard`/
+  `AlertCard`/`CurrentResidenceSheet`/`BottomTabBar`/`MissionScreen`. **Limite assumée,
+  documentée dans `memory.md`** : la combinaison spécifique EN COURS + overlay hors-ligne +
+  alerte de démo (Sprint 004, intentionnelle) reste trop dense pour que
+  `CurrentResidenceProgressCard` s'affiche en entier sur cet écran de 360×800dp (repères 4/5 +
+  bouton Signaler + FAB/météo coupés proprement par `overflow:hidden`, sans chevauchement cassé) —
+  vérifié que les 3 autres variantes (sans cette combinaison) s'affichent, elles, intégralement.
+  Vérifié : `tsc`/`eslint` propres, `jest` 27/27 verts.
 
 ## Suivi / limitations déclarées
 

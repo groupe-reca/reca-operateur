@@ -48,9 +48,9 @@ export function MissionCard({
           <Txt variant="labelCaps" color={colors.brand}>
             Mission active
           </Txt>
-          <Txt style={styles.title}>{`Mission ${missionId}`}</Txt>
-          <Txt variant="meta" color={colors.textSecondary}>{`Secteur ${secteur}`}</Txt>
-          <Txt variant="meta" color={colors.textSecondary}>
+          <Txt style={styles.title} numberOfLines={1}>{`Mission ${missionId}`}</Txt>
+          <Txt variant="meta" color={colors.textSecondary} numberOfLines={1}>{`Secteur ${secteur}`}</Txt>
+          <Txt variant="meta" color={colors.textSecondary} numberOfLines={1}>
             {etaLabel ? `${total} résidences · ${etaLabel}` : `${total} résidences`}
           </Txt>
         </View>
@@ -68,10 +68,11 @@ export function MissionCard({
               <Icon icon={ChevronRight} color={colors.textSecondary} size={16} />
             </PressableScale>
           ) : null}
-          {/* Kept subtle here — the primary sync affordance lives in AppHeader;
-              this fulfils the syncState contract (HANDOFF §4) without
-              competing visually with the "Détails" button above it. */}
-          <SyncIndicator state={syncState} />
+          {/* Only surfaced for non-nominal states (mock-encours.png shows just
+              "Détails" when synced — no redundant pill for the default case;
+              HANDOFF §4's syncState contract still holds for anything worth
+              flagging). */}
+          {syncState !== 'synced' ? <SyncIndicator state={syncState} /> : null}
         </View>
       </View>
 
@@ -82,20 +83,22 @@ export function MissionCard({
           <Txt variant="labelCaps" color={colors.success}>
             Résidence
           </Txt>
-          <Txt style={styles.statValue}>{`${index}/${total}`}</Txt>
+          <Txt style={styles.statValue} numberOfLines={1}>{`${index}/${total}`}</Txt>
         </View>
         <View style={styles.stat}>
           <Txt variant="labelCaps" color={colors.textSecondary} numberOfLines={1}>
             Progression
           </Txt>
-          <Txt style={styles.statValue}>{`${progressPct}%`}</Txt>
+          <Txt style={styles.statValue} numberOfLines={1}>{`${progressPct}%`}</Txt>
           <ProgressBar progress={progressPct / 100} />
         </View>
         <View style={styles.stat}>
           <Txt variant="labelCaps" color={colors.textSecondary}>
             Temps
           </Txt>
-          <Txt style={styles.statValue}>{formatElapsedWithHours(missionSeconds)}</Txt>
+          <Txt style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
+            {formatElapsedWithHours(missionSeconds)}
+          </Txt>
         </View>
       </View>
     </GlassCard>

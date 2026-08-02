@@ -57,6 +57,7 @@ export function MissionScreen({ state }: Props) {
           missionSeconds={state.mission.missionSeconds}
           syncState={state.mission.syncState}
           etaLabel={state.mission.totalEtaLabel}
+          onDetails={() => {}}
         />
         {state.offline ? <OfflineIndicator pendingChanges={state.offline.pendingOperations} /> : null}
         <AlertsRow alerts={state.alerts} />
@@ -154,10 +155,16 @@ function AlertsRow({ alerts }: { alerts: MissionScreenState['alerts'] }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  topSection: { gap: spacing.sm, paddingBottom: spacing.sm },
+  topSection: { gap: spacing.xs, paddingBottom: spacing.xs },
   alertsRow: { gap: spacing.sm },
-  mapArea: { flex: 1, minHeight: 220, overflow: 'hidden' },
-  leftColumn: { position: 'absolute', gap: spacing.md, width: 220 },
+  // Small floor only — a real minHeight of 220+ can force the map taller
+  // than the remaining budget on a short/narrow phone once the top block
+  // grows (offline banner + alert, both optional additive overlays), which
+  // pushed the bottom sheet + tab bar off the bottom of the screen entirely
+  // (see memory.md, first real-device calibration pass). Letting flex:1
+  // shrink further keeps the bottom nav always reachable.
+  mapArea: { flex: 1, minHeight: 60, overflow: 'hidden' },
+  leftColumn: { position: 'absolute', gap: spacing.sm, width: 220 },
   rightColumn: { position: 'absolute', alignItems: 'flex-end', gap: spacing.md },
   mapControls: { gap: spacing.sm },
   weatherPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md },

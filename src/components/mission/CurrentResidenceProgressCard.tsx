@@ -95,8 +95,8 @@ export function CurrentResidenceProgressCard({
 const BADGE = 24;
 
 const styles = StyleSheet.create({
-  card: { padding: spacing.lg, gap: spacing.md },
-  steps: { gap: spacing.sm + 2 },
+  card: { padding: spacing.md, gap: spacing.sm },
+  steps: { gap: spacing.sm },
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   doneBadge: {
     width: BADGE,

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PressableScale } from '@/components/ui/PressableScale';
 import { Txt } from '@/components/ui/Txt';
@@ -31,6 +32,7 @@ export function MissionScreenPreview() {
   const current = VARIANTS[selected] ?? VARIANTS[0];
   const { loading, session, mission, activeMissionItem, nextMissionItems } = useMissionContext();
   const itemCount = nextMissionItems.length + (activeMissionItem ? 1 : 0);
+  const insets = useSafeAreaInsets();
   if (!current) {
     return null;
   }
@@ -42,8 +44,9 @@ export function MissionScreenPreview() {
           UI (CurrentResidenceSheet + BottomTabBar) on a real phone, since
           that section's actual height varies by device (see memory.md).
           Taking real layout space instead guarantees no overlap on any
-          screen size. */}
-      <View style={styles.devToolbar}>
+          screen size. paddingTop: insets.top keeps it clear of the status
+          bar (this toolbar sits outside MissionScreen's own safe area). */}
+      <View style={[styles.devToolbar, { paddingTop: insets.top + spacing.xs }]}>
         <View style={styles.switcher}>
           {VARIANTS.map((variant, index) => (
             <PressableScale

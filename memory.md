@@ -415,11 +415,88 @@
   flex (qui prend sa place dans le flux) à un overlay absolument positionné deviné au pixel près,
   chaque fois que c'est possible.
 
-## Contrainte de vérification (ce VPS)
+## Deuxième calibrage visuel réel — device réel (2026-08-02)
 
-- Le VPS **n'a ni GUI ni émulateur** : ici on garantit seulement **compile + types + lint +
-  tests** (headless). La validation **runtime/visuelle** se fait sur le **laptop/téléphone** du
-  propriétaire (`expo start` + Expo Go pour l'UI ; dev build Android Studio dès Mapbox).
+- **Bug critique trouvé et corrigé** : `mapArea` avait `minHeight: 220` (`MissionScreen.tsx`).
+  Sur un téléphone étroit/court réel (TECNO KL4 testé : 360×800dp), quand le bloc du haut
+  (header + `MissionCard` + overlay hors-ligne + alerte) et le bloc du bas (`CurrentResidenceSheet`
+  + `BottomTabBar`) réclament ensemble plus que la hauteur disponible, ce plancher forçait le
+  total à dépasser la hauteur de l'écran — et comme l'écran n'est **pas** scrollable, l'excédent
+  se retrouvait **hors de l'écran physique, invisible**, poussant la feuille résidence et **toute
+  la barre d'onglets du bas hors champ**. **Fix** : plancher réduit à `minHeight: 60` (juste assez
+  pour ne jamais afficher un écran totalement vide) — flexbox peut désormais réellement réduire
+  la carte autant que nécessaire, garantissant que le panneau du bas (donc la navigation) reste
+  **toujours** accessible. Levier structurel le plus important de cette passe.
+- **`onDetails` jamais câblé** : `MissionScreen.tsx` appelait `<MissionCard ... />` sans le prop
+  `onDetails`, donc le bouton « Détails » (bordé, prévu depuis le Sprint 003) ne s'affichait
+  **jamais** — seul un pill « Synchronisé » apparaissait à sa place, contrairement à
+  `mock-encours.png` qui montre uniquement « Détails ›». **Fixé** par un no-op `onDetails={() =>
+  {}}` (même pattern que les autres placeholders décoratifs du projet — `BottomTabBar`, etc.).
+- **`SyncIndicator` révisé** : ne s'affiche plus que pour les états `syncState !== 'synced'`
+  (`MissionCard.tsx`). Sur la maquette de référence, l'état « synchronisé » (nominal) ne montre
+  **aucun** second badge à côté de « Détails » — l'ancienne décision Sprint 003 (« SyncIndicator
+  déplacé sous Détails ») empilait les deux pills en permanence, ce qui (a) ne correspond pas au
+  PNG de référence et (b) ajoutait de la hauteur inutile au pire moment. Le contrat syncState
+  (HANDOFF §4) reste respecté : dès que l'état sort du nominal (`pending`/`syncing`/`offline`/
+  `error`), le badge redevient visible.
+- **Retours à la ligne parasites corrigés** : sur cet écran étroit (360dp), le titre `Mission
+  {id}` et la ligne méta `{total} résidences · {eta}` passaient sur 2 lignes (le second cas
+  faisait même déborder juste `(est.)` sur sa propre ligne), et la valeur `TEMPS` (`00:22:20`,
+  état PROBLÈME) débordait de sa colonne de 3. **Fixé** par `numberOfLines={1}` sur ces `Txt`
+  (troncature nette plutôt qu'un wrap qui gonfle la hauteur de `MissionCard`) + `adjustsFontSizeToFit`
+  sur la valeur `TEMPS` (rétrécit plutôt que tronque un chiffre, plus lisible pour une durée).
+- **Resserrements de tokens légitimes** (aucune valeur inventée, juste un cran plus petit sur
+  l'échelle `spacing` existante) pour redonner de la marge à la carte sur cet appareil :
+  `topSection.gap`/`paddingBottom` (`sm`→`xs`), `leftColumn.gap` (`md`→`sm`),
+  `CurrentResidenceProgressCard` (`padding` `lg`→`md`, `gap` `md`→`sm`, `steps.gap` `sm+2`→`sm`),
+  `AlertCard` (`paddingVertical` `md`→`sm`, `paddingHorizontal` `lg`→`md`, `gap` `md`→`sm`),
+  `CurrentResidenceSheet` (`padding` `lg`→`md`, `gap` `md`→`sm`), `BottomTabBar`
+  (`paddingTop`/`paddingBottom` `sm`→`xs`).
+- **Constat important, non « corrigé » à dessein** : même après tous ces resserrements, la
+  variante **EN COURS combinée à l'overlay hors-ligne + l'alerte de démonstration** (décision
+  intentionnelle du Sprint 004 : `IN_PROGRESS_MOCK.offline` + une alerte, choisis spécifiquement
+  pour prouver que l'overlay hors-ligne peut se superposer à n'importe quel état — voir section
+  Sprint 004 plus haut) ne laisse plus assez de hauteur à `mapArea` pour montrer l'intégralité de
+  `CurrentResidenceProgressCard` (repères 4/5 « à venir » + bouton « Signaler un problème ») ni le
+  FAB « Recentrer »/le widget météo du calque carte : seuls le libellé d'état et une partie du
+  chrono restent visibles, le reste est proprement **coupé par le `overflow:hidden` de `mapArea`**
+  (pas de chevauchement visuel cassé, juste invisible). **Vérifié que ce n'est PAS un bug
+  généralisé** : les 3 autres variantes (EN ROUTE, EN APPROCHE, PROBLÈME — aucune n'a cette
+  combinaison hors-ligne+alerte) s'affichent **intégralement**, feuille résidence et barre
+  d'onglets toujours visibles, aucun chevauchement. Ce cas précis (EN COURS + démo hors-ligne +
+  alerte, sur un écran de 360×800dp) reste donc une limite de densité de contenu connue et
+  assumée, pas quelque chose à retenter en boucle — la revoir seulement si un vrai appareil plus
+  large que 360dp montre encore un problème, ou si une prochaine maquette pixel couvre
+  explicitement ce cas.
+- **Repro/outillage** : `.input/mock-encours.png` n'existait plus à la racine de `.input/`
+  (dossier gitignoré, recréé à chaque session) — retrouvé dans
+  `.input/cran-ma-tre-r-ca-op-rateur/project/assets/mock-encours.png` (export du handoff Fable
+  d'origine) et recopié à l'emplacement attendu. **`MissionScreenPreview`'s dev toolbar** n'avait
+  pas de safe-area (`useSafeAreaInsets` ajouté) — sans ça, le sélecteur de variantes chevauchait
+  la barre de statut Android et ses cibles tactiles réelles ne correspondaient pas à ce qui était
+  visible à l'écran, rendant impossible la sélection fiable d'une variante par `adb shell input
+  tap`. Ce fichier reste dev-only (même statut que documenté au Sprint 004), ce correctif est
+  purement outillage de calibrage.
+- **Piège adb/Git Bash** : `adb shell screencap`/`adb pull` avec un chemin `/sdcard/...` échoue
+  silencieusement (converti en chemin Windows par Git Bash, ex. `C:/Program Files/Git/sdcard/...`)
+  → nécessite `export MSYS_NO_PATHCONV=1` **dans le même appel** (les variables d'environnement
+  ne survivent pas entre deux invocations d'outil Bash séparées ici).
+
+## Contrainte de vérification (ce VPS) — corrigée (2026-08-02)
+
+- **Ancienne hypothèse invalidée** : ce dépôt tourne en réalité sur une **machine Windows** (pas
+  un VPS Linux headless) qui a, de fait, le SDK Android complet (`adb`, `platform-tools`), un JDK
+  17 standalone, et peut lancer `gradlew assembleDebug` + installer/piloter un **vrai téléphone
+  Android branché en USB** directement depuis cet environnement — pas besoin systématique du
+  laptop du propriétaire. Vérifié de bout en bout le 2026-08-02 : prebuild → build → install →
+  Metro (`expo start --dev-client`) → `adb reverse` → capture d'écran (`adb shell screencap` +
+  `adb pull`) → comparaison pixel avec une maquette de référence, boucle de calibrage itérative
+  complète.
+- **Ce qui reste vrai** : sans appareil **physiquement branché** à cette machine au moment de la
+  session, la validation runtime/visuelle est toujours impossible d'ici (pas d'émulateur installé)
+  — il faut alors demander au propriétaire de brancher un appareil (`adb devices` vide = bloqué,
+  à vérifier **avant** de commencer toute tâche de calibrage visuel plutôt que de supposer que ce
+  n'est jamais possible ici).
 
 ## Système de mémoire
 
