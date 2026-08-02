@@ -311,6 +311,34 @@
   (116/116, 12 suites, dont `tests/voiceEngine.test.ts` — 16 tests)/`expo-doctor` (20/20) verts,
   app sans régression sur device (TECNO KL4) après le nouveau build natif.
 - [ ] **Sprint 017-019 — Auth, mission assignée, fin de mission, mode développement** (Phase 11).
+  - [x] **Sprint 017 (partie 1/N) — Câblage réel de MissionContext** (branche
+    `sprint-017-mission-context-wiring`, 2026-08-02). Découpage validé avec le propriétaire : cette
+    passe câble uniquement les 5 moteurs existants (State Machine, GPS, Sync, Offline, Voice) dans
+    `MissionContext.tsx` et remplace les mocks statiques de `MissionScreen` par les vraies données
+    — pas de nouveaux écrans, pas de capteurs natifs réels (GPS/réseau système restent injectés en
+    factice). `App.tsx` remplace enfin `<MissionScreenPreview />` par `<LiveMissionScreen />`
+    (promesse faite depuis le Sprint 004, redifférée à chaque sprint moteur suivant). Bug latent
+    corrigé au passage : `missions[0]` ambigu (ordre non garanti de `getAll()`) une fois la vraie
+    Mission #9 Supabase coexistant avec la mission de démo en local — `selectedMissionId =
+    assigned?.id ?? missions[0]?.id` résout désormais la mission active sans ambiguïté.
+    `deriveMissionScreenState.ts` (nouveau, pur, testé) traduit `MissionContextValue` → la forme
+    `MissionScreenState` déjà consommée par `MissionScreen` (`MissionScreen` lui-même inchangé, 3
+    callbacks optionnels ajoutés : `onReportProblem`/`onResolveProblem`/`onSkipItem`). **Écarts
+    assumés** : pas de `missionVoiceBridge.ts` séparé — sans capteur GPS réel, les transitions
+    automatiques EN_ROUTE→…→COMPLETED ne se produisent jamais cette passe, donc rien à traduire
+    pour elles (seul `VOICE_PROBLEM_RECORDED` est réellement déclenché, sur `reportProblem`) ;
+    « Signaler » (`onReportProblem`) reste sans effet réel — aucune UI/taxonomie de `problemCode`
+    documentée, inventer une règle métier aurait été hors mandat. **Hors scope, différé** : capteur
+    GPS réel (`expo-location`), capteur réseau réel (NetInfo), les 6 nouveaux écrans (Aucune
+    mission/Mission active/Fin de mission/Paramètres/Développement/Mode hors ligne), bouton
+    « Fermer la mission ». Vérifié : `tsc`/`eslint`/`jest` verts (128/128, 14 suites, dont 8
+    nouveaux tests `tests/deriveMissionScreenState.test.ts` + 4 nouveaux tests d'intégration réelle
+    `tests/missionContext.test.tsx`)/`expo-doctor` (20/20). **Vérifié sur device** (TECNO KL4,
+    rechargement JS via Metro, aucun nouveau build natif requis) : aucune erreur JS, repli honnête
+    « Aucune résidence active » affiché correctement (Mission #9 réelle déjà entièrement
+    complétée) — comportement voulu, pas un bug. Suivi ouvert non bloquant : revalider avec une
+    mission ayant encore des résidences actives pour voir `MissionScreen` alimenté en conditions
+    réelles.
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 
 ## À vérifier

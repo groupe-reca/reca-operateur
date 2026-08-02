@@ -34,8 +34,10 @@
   (2026-08-02, requis par `react-native-gesture-handler`) → `SafeAreaProvider` +
   `AuthProvider`, un `AuthGate` interne : non authentifié → `LoginScreen`, sinon
   `MissionProvider` (Sprint 007-008 — SQLite/`MissionContext`, `employeeId` passé depuis
-  `useAuth()`) → `MissionScreenPreview` (temporaire, comme avant). `ComponentGalleryScreen` reste
-  dans le repo (référence/tests) mais n'est plus le point d'entrée.
+  `useAuth()`) → **`LiveMissionScreen`** (Sprint 017 partie 1/N, 2026-08-02 — remplace enfin
+  `MissionScreenPreview`, promesse faite depuis le Sprint 004). `MissionScreenPreview`/
+  `ComponentGalleryScreen` restent dans le repo (référence/tests) mais ne sont plus le point
+  d'entrée.
 - `metro.config.js` — Metro Expo par défaut + `react-native-svg-transformer` (import `.svg`
   officiels comme composants React).
 - `.gitignore` — Expo + natifs générés + `.input/` + `ecosystem.config.cjs`.
@@ -59,10 +61,27 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 
 - `src/app/` — composition racine (providers, thème, montage). Vide.
 - `src/screens/`
+  - `LiveMissionScreen.tsx` (Sprint 017 partie 1/N, 2026-08-02, **nouveau point d'entrée réel**)
+    — `useMissionContext()` → `deriveMissionScreenState(ctx, new Date())` (mémoïsé sur les champs
+    utiles, pas sur `ctx` entier) → `MissionScreen`. Repli minimal texte pendant `loading` ou
+    quand aucune résidence active/problème n'existe (le vrai écran « Aucune mission », `docs/11`
+    Phase 11, reste hors scope). Câble `onResolveProblem`/`onSkipItem` aux commandes réelles du
+    contexte ; **`onReportProblem` volontairement sans effet** — aucune UI/taxonomie de
+    `problemCode` documentée, voir `memory.md`.
+  - `deriveMissionScreenState.ts` (Sprint 017 partie 1/N, pur, testé
+    `tests/deriveMissionScreenState.test.ts`) — traduit `MissionContextValue` (mission/résidence
+    active/items/sync/offline) vers `MissionScreenState` sans toucher `MissionScreen`. Cherche un
+    item `PROBLEM` dans `allMissionItems` (exclu de `ACTIVE_ITEM_STATES`, donc jamais
+    `activeMissionItem`) séparément. Champs sans source de donnée réelle encore laissés en
+    placeholder honnête plutôt qu'inventés (`residenceDistanceLabel`/`residenceEtaLabel`/
+    `totalEtaLabel`/`alerts`/`tasks`) — `docs/10` « ne jamais masquer une erreur par une valeur
+    fictive ». `missionSeconds`/`timerSeconds` calculés une fois à la dérivation, pas un ticker.
   - `MissionScreen.tsx` — **écran produit**, désormais **piloté par les données**
-    (Sprint 004) : accepte une prop `state: MissionScreenState`, assemble tous les composants,
-    mise en page fixe (pas de scroll), rend `CurrentResidenceProgressCard` ou `ProblemStateCard`
-    selon l'état, groupe les alertes (`AlertsRow` interne : 1 complète + chip « +N »).
+    (Sprint 004) : accepte une prop `state: MissionScreenState` + 3 callbacks optionnels
+    (`onReportProblem`/`onResolveProblem`/`onSkipItem`, Sprint 017 partie 1/N, no-op par défaut),
+    assemble tous les composants, mise en page fixe (pas de scroll), rend
+    `CurrentResidenceProgressCard` ou `ProblemStateCard` selon l'état, groupe les alertes
+    (`AlertsRow` interne : 1 complète + chip « +N »).
   - `missionScreenState.ts` (Sprint 004) — type `MissionScreenState`/`ActiveResidenceState`/
     `MissionScreenAlert`, source de vérité de ce qui varie entre les 4 variantes opérationnelles.
     Champ `map` (Sprint 005-006) : position simulée + 5 résidences (`n`/`rank`/`coordinate`) +
@@ -70,11 +89,9 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   - `missionScreenMocks.ts` (Sprint 004) — 4 objets mock (`EN_ROUTE_MOCK`/`APPROACHING_MOCK`/
     `IN_PROGRESS_MOCK`/`PROBLEM_MOCK`), valeurs de chrono fidèles à `docs/01`. Partagent tous
     `MOCK_MAP` (Sprint 005-006, boucle simulée près de Saint-Jérôme, QC).
-  - `MissionScreenPreview.tsx` (Sprint 004, **dev-only**, jamais un écran produit) — sélecteur
-    des 4 variantes, point d'entrée temporaire de `App.tsx` en attendant le vrai State Machine.
-    Depuis Sprint 007-008 : ligne de debug additive (`useMissionContext()` — session + nombre de
-    résidences chargées depuis SQLite), preuve d'intégration légère qui ne touche pas
-    `MissionScreen`.
+  - `MissionScreenPreview.tsx` (Sprint 004, **dev-only**, jamais un écran produit, **plus le
+    point d'entrée depuis Sprint 017 partie 1/N**) — sélecteur des 4 variantes, gardé comme
+    référence/tests. Ligne de debug additive (`useMissionContext()`, Sprint 007-008).
   - `ComponentGalleryScreen.tsx` — galerie de tous les composants (mock data), référence de
     comparaison visuelle. N'est plus le point d'entrée depuis le Sprint 003.
 - `src/components/` — UI présentationnelle pure.
@@ -127,9 +144,9 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     correction rétroactive de `docs/09` « Activation de la résidence suivante », absente du
     Sprint 009-010 — dans la même transaction, via le hook générique `additionalWrites` sur
     `applyItemTransition`/`writeItemTransition`), `recovery.ts` (`recoverOnStartup` — aucun actif
-    / plusieurs actifs), `index.ts` (barrel). **Pas encore câblé** dans
-    `MissionContext`/`MissionScreen` (commandes prêtes, sans appelant réel) — le GPS Engine
-    (Sprint 011-012) est le premier vrai appelant de ces commandes.
+    / plusieurs actifs), `index.ts` (barrel). **Câblé dans `MissionContext`** depuis Sprint 017
+    partie 1/N (2026-08-02) : `reportProblem`/`resolveProblem`/`skipItem` exposés au contexte,
+    câblés aux boutons existants de l'UI.
   - `gps/` (Sprint 011-012) — logique GPS pure (`docs/04`), aucun React, `StateMachine`/`Clock`
     injectés : `types.ts` (`GpsPosition`, `GpsThresholds` + `DEFAULT_GPS_THRESHOLDS` — 2 valeurs
     marquées `@assumption`, non chiffrées par `docs/04`), `distance.ts` (`haversineDistanceMeters`,
@@ -137,16 +154,20 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     `setActiveResidence`/`setNextResidence`/`updatePosition`/`checkTimeout`/`on`/`getEvents` —
     valide chaque franchissement de rayon par délai avant d'appeler les commandes du State
     Machine), `simulator.ts` (`createGpsSimulator` — Travail explicite de cette phase, réutilise
-    le même moteur que la production), `index.ts` (barrel). **Pas encore câblé** dans
-    `MissionContext`/`MissionScreen`, pas de capteur `expo-location` réel (même limite que le
-    State Machine).
+    le même moteur que la production), `index.ts` (barrel). **Câblé dans `MissionContext`**
+    depuis Sprint 017 partie 1/N (2026-08-02) : `setActiveResidence` appelé à chaque changement
+    de résidence active, mais **pas de capteur `expo-location` réel** — le moteur ne reçoit jamais
+    de position, donc ne peut jamais déclencher de transition (capteur explicitement différé,
+    voir `plans.md`).
   - `sync/` (Sprint 013-014) — moteur pur de synchronisation (`docs/07`), aucun React, `Db`/
     `Clock`/`transport`/`network` injectés : `backoff.ts` (`computeBackoffDelaySeconds`, testé),
     `priority.ts` (`selectBatch` — ordre intra-mission jamais cassé), `syncEngine.ts`
     (`createSynchronizationEngine` : `runSyncCycle`/`recoverOnStartup`/`retryOperation`/
     `getSynchronizationState`/`on`/`getEvents`), `types.ts`, `index.ts`. Transport réel :
-    `src/integrations/supabase/supabaseSyncTransport.ts`. **Pas encore câblé** dans
-    `MissionContext` (même limite que State Machine/GPS Engine).
+    `src/integrations/supabase/supabaseSyncTransport.ts`. **Câblé dans `MissionContext`** depuis
+    Sprint 017 partie 1/N (2026-08-02) : `runSyncCycle()` après chaque mutation + au montage,
+    `synchronizationState` exposé réel (`network` reste un stub `{isOnline: () => true}` — capteur
+    NetInfo réel différé).
   - `offline/` (Sprint 015, 2026-08-02, **portée noyau** — voir `plans.md`) — moteur pur de
     détection de connectivité (`docs/08`), aucun timer propre (même principe que le GPS Engine) :
     `types.ts` (`ConnectivityStatus` = 4 états `ONLINE/DEGRADED/OFFLINE/RECOVERING`, réduit des 6
@@ -154,8 +175,9 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     (`createOfflineEngine({clock, networkStatus, consecutiveFailureThreshold?,
     recoveryValidationDelaySeconds?})` : `checkConnectivity()`/`recordOperationOutcome()`/
     `getState()`/`on()`/`getEvents()` — réutilise `NetworkStatusProvider` du Sync Engine, pas de
-    second contrat réseau inventé), `index.ts`. **Pas encore câblé** dans
-    `MissionContext.offlineState` (même limite que les 3 autres moteurs).
+    second contrat réseau inventé), `index.ts`. **Câblé dans `MissionContext.offlineState`**
+    depuis Sprint 017 partie 1/N (2026-08-02) : `checkConnectivity()` au montage, `offlineState`
+    exposé réel (même stub réseau que le Sync Engine — capteur réel différé).
   - `voice/` (Sprint 016, 2026-08-02) — moteur pur d'annonces vocales (`docs/06`), aucun timer
     propre : `types.ts` (`VoiceInputEvent`/`VoicePriority`/`VoiceAnnouncement`/`Speaker` injecté/
     `VoiceEngineEvent`), `textFormatting.ts` (`normalizeAddressForSpeech` — abréviations
@@ -166,8 +188,12 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     `handleEvent`/`processNext`/`repeatCurrentContext`/`setEnabled`/`on`/`getEvents` — file
     triée priorité→heure, anti-répétition par clé, expiration croisée, interruption uniquement
     par du `CRITICAL`, cooldown contournable pour la répétition manuelle), `index.ts` (barrel).
-    Intégration réelle : `src/integrations/voice/expoSpeaker.ts`. **Pas encore câblé** dans
-    `MissionContext`/`VoiceButton` (même limite que les 4 autres moteurs).
+    Intégration réelle : `src/integrations/voice/expoSpeaker.ts`. **Partiellement câblé dans
+    `MissionContext`** depuis Sprint 017 partie 1/N (2026-08-02) : `reportProblem` pousse
+    `VOICE_PROBLEM_RECORDED` puis pompe `processNext()` en boucle légère après chaque mutation —
+    pas de traducteur générique pour les autres événements (`EN_ROUTE`/`APPROACHING`/…) car sans
+    capteur GPS réel ces transitions ne se produisent jamais automatiquement cette passe, voir
+    `plans.md`. Toujours **pas câblé** à `VoiceButton` (bouton reste no-op).
   - `map/mapCameraConfig.ts` (Sprint 005-006) — **seule partie du Map Engine réellement « sans
     React »** : constantes caméra (pitch, durées, paliers de zoom), `zoomForState` (pur, testé),
     `cameraPaddingTopFor` (dérive l'offset caméra pour l'ancre du tracteur). Le rendu Mapbox
@@ -175,14 +201,21 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     l'idéal « moteur sans React » de `docs/02`, notée dans `memory.md` (API `@rnmapbox/maps`
     intrinsèquement basée sur des composants).
 - `src/context/`
-  - `MissionContext.tsx` (Sprint 007-008, étendu 2026-08-02) — `MissionProvider`/
-    `useMissionContext()` : charge au montage (migrations → **`fetchAssignedMission` si
-    `employeeId` fourni, sinon/en repli seed démo si vide** → session ouverte → lecture), expose
-    `mission`/`activeMissionItem`/`nextMissionItems`/`gpsState`/`synchronizationState`/
-    `offlineState` (3 derniers = **placeholders typés**, aucun moteur réel derrière).
-    `deriveActiveAndNext` (exporté, pur, testé) : résidence active + suivantes, indépendant de
-    React/DB — utilise `isActiveItemState` du State Machine (Sprint 009-010) plutôt qu'une
-    constante dupliquée.
+  - `MissionContext.tsx` (Sprint 007-008, réécrit Sprint 017 partie 1/N — 2026-08-02) —
+    `MissionProvider`/`useMissionContext()` : au montage, instancie les 5 moteurs réels (State
+    Machine/GPS/Sync/Offline/Voice, refs stables) puis charge (migrations →
+    **`fetchAssignedMission` si `employeeId` fourni, sinon/en repli seed démo si vide** → mission
+    sélectionnée sans ambiguïté via `assigned?.id ?? missions[0]?.id` → session ouverte →
+    `offlineEngine.checkConnectivity()`/`syncEngine.recoverOnStartup()`/`runSyncCycle()`). Expose
+    `mission`/`activeMissionItem`/`nextMissionItems`/`allMissionItems`/`gpsState`
+    (`{available: false}`, capteur réel différé)/`synchronizationState`/`offlineState` (ces 2
+    derniers **réels**, plus des placeholders) + les commandes `reportProblem`/`resolveProblem`/
+    `skipItem` (State Machine réel → resync → pompe Voice Engine). `deriveActiveAndNext` (exporté,
+    pur, testé) : résidence active + suivantes, indépendant de React/DB — utilise
+    `isActiveItemState` du State Machine (Sprint 009-010) plutôt qu'une constante dupliquée.
+    `getDbOverride`/`syncTransportOverride`/`speakerOverride` injectables (tests uniquement — la
+    règle « jamais de vrai réseau touché en test » s'applique aussi au Sync/Voice ici, voir
+    `tests/missionContext.test.tsx`).
   - `AuthContext.tsx` (2026-08-02) — `AuthProvider`/`useAuth()` : session Supabase Auth
     (email/mot de passe), résout `employeeId` (`employees.user_id = auth.uid()`) une fois par
     session. Seul point d'entrée authentification — aucun composant n'appelle
@@ -306,6 +339,19 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   `APPROACHING`→`RESIDENCE_STARTED`, cooldown respecté puis contourné par avance d'horloge,
   répétition manuelle bypass le cooldown, mode silencieux, échec de synthèse journalisé sans
   bloquer.
+- `tests/deriveMissionScreenState.test.ts` (Sprint 017 partie 1/N, 2026-08-02) — 8 tests purs :
+  `null` sans mission/sans résidence active-ni-problème, dérivation EN_ROUTE/APPROACHING/
+  IN_PROGRESS (timer par état, index/total/%), item `PROBLEM` trouvé via `allMissionItems` même
+  s'il ne peut pas être `activeMissionItem`, priorité PROBLEM sur un item actif si les deux
+  existent, `offline` présent seulement hors `ONLINE`, résidences carte plafonnées à 5 en filtrant
+  celles sans coordonnées.
+- `tests/missionContext.test.tsx` (Sprint 017 partie 1/N, 2026-08-02) — 4 tests d'intégration
+  réelle (`MissionProvider` sur un faux `Db`/transport Sync/`Speaker` injectés — jamais de vrai
+  réseau/synthèse, voir `getDbOverride`/`syncTransportOverride`/`speakerOverride`) : chargement de
+  la mission de démo (premier item EN_ROUTE actif), `reportProblem` → `PROBLEM` +
+  `activeMissionItem` redevient `null`, `resolveProblem` → retour à un état actif, `skipItem` →
+  `SKIPPED` + opération de sync mise en file. Mutations enveloppées dans `act()` (State Machine →
+  contexte → re-render, comme tout hook React testé).
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)
