@@ -248,6 +248,14 @@
   (repères 4/5, bouton Signaler, météo, zoom coupés pour EN COURS+hors-ligne+alerte) est
   désormais propre (juste `overflow:hidden`, sans superposition cassée) — détail dans
   `memory.md`. `tsc`/`eslint`/`jest` (27/27) verts.
+- [x] **Simplification du header** (2026-08-02) : sur signalement de l'utilisateur, retrait des
+  doublons `AppHeader`/`BottomTabBar` (`Menu`≈`Plus`, `Bell`≈`Alertes`) — `AppHeader` réduit au
+  logo seul (plus de `Wordmark` « OPÉRATEUR » sous le logo, sur demande explicite ; « RÉCA
+  GROUPE » reste visible car intégré au SVG du logo). `Cloud` (statut sync) déplacé dans
+  `MissionCard` à côté de « Détails ». `MissionCard` resserrée (badge décoratif retiré,
+  padding/gap réduits) ; fusion des lignes méta secteur/résidences/ETA essayée puis **annulée**
+  (tronquait l'ETA silencieusement) — restée sur 2 lignes. Vérifié sur device : plus d'espace
+  carte sur les 4 variantes, aucune régression. `tsc`/`eslint`/`jest` (27/27) verts.
 
 ## Suivi / limitations déclarées
 

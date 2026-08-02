@@ -57,7 +57,7 @@ export function MissionScreen({ state }: Props) {
           { paddingTop: insets.top + spacing.sm, paddingLeft: insets.left + screenMargin, paddingRight: insets.right + screenMargin },
         ]}
       >
-        <AppHeader notifications={2} />
+        <AppHeader />
         <MissionCard
           missionId={state.mission.missionId}
           secteur={state.mission.secteur}

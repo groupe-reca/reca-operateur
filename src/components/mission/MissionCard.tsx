@@ -1,4 +1,4 @@
-import { ChevronRight, ClipboardList } from 'lucide-react-native';
+import { ChevronRight, Cloud } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
 import { colors, fontFamily, radii, spacing } from '@/config/theme';
@@ -41,9 +41,6 @@ export function MissionCard({
   return (
     <GlassCard level="panel" radius="lg" style={styles.card}>
       <View style={styles.header}>
-        <View style={styles.badge}>
-          <Icon icon={ClipboardList} color={colors.textPrimary} size={22} />
-        </View>
         <View style={styles.headerText}>
           <Txt variant="labelCaps" color={colors.brand}>
             Mission active
@@ -55,6 +52,14 @@ export function MissionCard({
           </Txt>
         </View>
         <View style={styles.headerRight}>
+          {/* Sync status moved here from the header (2026-08-02 simplification —
+              see memory.md): a plain cloud when synced, the fuller
+              SyncIndicator (HANDOFF §4 contract) for anything worth flagging. */}
+          {syncState === 'synced' ? (
+            <Icon icon={Cloud} color={colors.success} size={18} />
+          ) : (
+            <SyncIndicator state={syncState} />
+          )}
           {onDetails ? (
             <PressableScale
               onPress={onDetails}
@@ -68,11 +73,6 @@ export function MissionCard({
               <Icon icon={ChevronRight} color={colors.textSecondary} size={16} />
             </PressableScale>
           ) : null}
-          {/* Only surfaced for non-nominal states (mock-encours.png shows just
-              "Détails" when synced — no redundant pill for the default case;
-              HANDOFF §4's syncState contract still holds for anything worth
-              flagging). */}
-          {syncState !== 'synced' ? <SyncIndicator state={syncState} /> : null}
         </View>
       </View>
 
@@ -106,16 +106,8 @@ export function MissionCard({
 }
 
 const styles = StyleSheet.create({
-  card: { padding: spacing.md, gap: spacing.sm },
+  card: { padding: spacing.sm, gap: spacing.xs },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  badge: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.md,
-    backgroundColor: colors.brand,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   headerText: { flex: 1, gap: 2 },
   title: { fontFamily: fontFamily.extrabold, fontSize: 20, color: colors.textPrimary },
   headerRight: { alignItems: 'flex-end', gap: spacing.xs },

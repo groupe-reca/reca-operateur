@@ -517,6 +517,34 @@
   layout à retenter en boucle.
 - `tsc --noEmit`, `eslint .`, `jest` (27/27, 4 suites) : tous verts après ce fix.
 
+## Simplification du header — décision produit (2026-08-02)
+
+- **Constat de l'utilisateur (validé)** : le header (`AppHeader.tsx`) dupliquait deux entrées de
+  la `BottomTabBar` — le bouton `Menu` face à l'onglet `Plus`, le `Bell`/badge notifications face
+  à l'onglet `Alertes` (les deux badges affichaient d'ailleurs le même compte mocké, `2`). Seul le
+  `Cloud` (statut sync) était une info unique.
+- **Décision** : `AppHeader` réduit au **logo seul** (`OfficialLogo`, largeur 120) — plus de
+  `Menu`, `Bell`, `NotificationBadge`, ni **`Wordmark` (« OPÉRATEUR »)** en dessous (demande
+  explicite : le libellé « RÉCA GROUPE » reste visible car il est **dans le SVG du logo**
+  lui-même, seul le sous-texte séparé `OPÉRATEUR` a été retiré — pas de contradiction avec
+  l'interdit `CLAUDE.md` sur le nom officiel affiché, qui reste lisible via le logo). Le composant
+  `Wordmark` lui-même n'est pas supprimé (encore utilisé par `ComponentGalleryScreen`, dev-only).
+- **`Cloud` déplacé dans `MissionCard`** (`headerRight`, à côté de « Détails ») : nuage vert simple
+  quand `syncState === 'synced'`, sinon le `SyncIndicator` existant (contrat HANDOFF §4 inchangé).
+- **`MissionCard` resserrée** : badge décoratif `ClipboardList` (carré rouge 44×44, purement
+  visuel) supprimé ; `card.padding`/`gap` descendus à `spacing.sm`/`spacing.xs`. **Tentative
+  annulée** : fusionner "Secteur {x}" et "{n} résidences · {eta}" sur une seule ligne tronquait
+  l'ETA (`numberOfLines={1}` coupait le texte à « 1… », perte d'info silencieuse) — **revenu aux
+  2 lignes distinctes**, aucune information affichée ne doit disparaître silencieusement pour
+  gagner de la hauteur.
+- **Résultat vérifié sur device** : espace carte visiblement agrandi sur les 4 variantes, aucune
+  régression (pas de nouveau chevauchement, barre d'onglets toujours entièrement visible). La
+  limite déjà documentée (EN COURS + démo hors-ligne + alerte) reste la même — pas aggravée, pas
+  résolue par ce changement (ce n'était pas son objet). `tsc`/`eslint`/`jest` (27/27) verts.
+- **Fichiers touchés** : `AppHeader.tsx` (réécrit, props `onMenu`/`onSync`/`onNotifications`/
+  `notifications` retirées), `MissionCard.tsx`, `MissionScreen.tsx` (appel `<AppHeader />` sans
+  props), `ComponentGalleryScreen.tsx` (même correction d'appel, dev-only).
+
 ## Contrainte de vérification (ce VPS) — corrigée (2026-08-02)
 
 - **Ancienne hypothèse invalidée** : ce dépôt tourne en réalité sur une **machine Windows** (pas

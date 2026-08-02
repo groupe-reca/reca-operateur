@@ -39,7 +39,7 @@ export function ComponentGalleryScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Section title="En-tête">
-        <AppHeader notifications={2} />
+        <AppHeader />
       </Section>
 
       <Section title="Carte mission">
