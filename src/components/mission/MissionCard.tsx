@@ -10,7 +10,7 @@ import { PressableScale } from '../ui/PressableScale';
 import { ProgressBar } from '../ui/ProgressBar';
 import { Txt } from '../ui/Txt';
 import { SyncIndicator } from './SyncIndicator';
-import { formatElapsedWithHours } from './PhaseTimer';
+import { formatDuration } from './PhaseTimer';
 
 type Props = {
   missionId: string;
@@ -18,7 +18,13 @@ type Props = {
   index: number;
   total: number;
   progressPct: number; // 0..100
-  missionSeconds: number;
+  // Current residence's phase (état + chrono) — replaces the mission-wide
+  // elapsed time, which is less actionable moment-to-moment for an operator
+  // and duplicated the (now removed) floating CurrentResidenceProgressCard
+  // (2026-08-02 simplification, see memory.md).
+  phaseLabel: string;
+  phaseSeconds: number;
+  phaseColor: string;
   syncState: SyncState;
   // Estimated total duration, e.g. "1h 45 min (est.)" — shown next to the
   // residence count, matching mock-encours.png's second meta line.
@@ -33,7 +39,9 @@ export function MissionCard({
   index,
   total,
   progressPct,
-  missionSeconds,
+  phaseLabel,
+  phaseSeconds,
+  phaseColor,
   syncState,
   etaLabel,
   onDetails,
@@ -93,11 +101,11 @@ export function MissionCard({
           <ProgressBar progress={progressPct / 100} />
         </View>
         <View style={styles.stat}>
-          <Txt variant="labelCaps" color={colors.textSecondary}>
-            Temps
+          <Txt variant="labelCaps" color={phaseColor} numberOfLines={1}>
+            {phaseLabel}
           </Txt>
           <Txt style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
-            {formatElapsedWithHours(missionSeconds)}
+            {formatDuration(phaseSeconds)}
           </Txt>
         </View>
       </View>

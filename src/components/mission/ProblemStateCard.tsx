@@ -79,11 +79,12 @@ export function ProblemStateCard({ address, problemType, note, frozenSeconds, on
 }
 
 const styles = StyleSheet.create({
-  card: { padding: spacing.lg, gap: spacing.md },
+  card: { padding: spacing.md, gap: spacing.sm },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   block: { gap: 2 },
-  actions: { gap: spacing.sm },
+  actions: { flexDirection: 'row', gap: spacing.sm },
   actionButton: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,

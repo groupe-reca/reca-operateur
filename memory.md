@@ -545,6 +545,64 @@
   `notifications` retirées), `MissionCard.tsx`, `MissionScreen.tsx` (appel `<AppHeader />` sans
   props), `ComponentGalleryScreen.tsx` (même correction d'appel, dev-only).
 
+## Retrait de `CurrentResidenceProgressCard` — décision produit (2026-08-02)
+
+- **Constat de l'utilisateur (validé)** : la carte flottante `CurrentResidenceProgressCard`
+  (état + chrono + adresse + checklist, superposée à la carte) faisait doublon avec
+  `MissionCard` (état déjà visible via ses stats) et `CurrentResidenceSheet` (adresse déjà
+  affichée en bas) — « cette carte-là je trouve qu'elle est de trop ». L'utilisateur note aussi
+  que l'onglet `Mission` du bas peut porter les détails complets, donc l'écran carte n'a pas
+  besoin de tout dupliquer.
+- **Décision** : `CurrentResidenceProgressCard` **n'est plus rendue** par `MissionScreen.tsx`
+  (le composant/fichier n'est pas supprimé — encore utilisé par `ComponentGalleryScreen`,
+  dev-only — mais son rôle produit disparaît de l'écran maître).
+  - **État + chrono** déplacés dans `MissionCard` : le 3e stat (auparavant « Temps » = temps
+    total de mission) devient **l'état de la résidence actuelle + son chrono de phase**
+    (`phaseLabel`/`phaseSeconds`/`phaseColor`, coloré selon l'état comme `PhaseTimer`). Le temps
+    total de mission n'est plus affiché nulle part sur cet écran (jugé moins actionnable
+    instant par instant — récupérable via `Mission` plus tard). Pour l'état `PROBLEM`,
+    `phaseSeconds` utilise `state.problem.frozenSeconds` (le chrono normal est gelé/ignoré,
+    voir `missionScreenState.ts`).
+  - **Bouton « Signaler un problème »** déplacé dans `CurrentResidenceSheet`, en 4e position à
+    côté d'Appeler/Note/Itinéraire (même style `FloatingActionButton`, icône rouge
+    fonctionnelle `colors.danger`) plutôt que le style pilule pleine largeur de `ProblemButton`
+    (resté disponible comme composant, plus utilisé ici).
+  - **`CurrentResidenceSheet` réorganisée** : l'ancien layout en ligne (infos à gauche, 3
+    boutons à droite) faisait wrapper « RÉSIDENCE ACTUELLE » sur 2 lignes faute de largeur.
+    Nouveau layout en colonne : bloc infos pleine largeur en haut, rangée de 4 boutons en
+    dessous — plus de wrap, et la 4e action tient sans re-serrer davantage.
+  - **Tentative annulée** : fusionner secteur/résidences/ETA sur une ligne dans `MissionCard`
+    tronquait l'ETA silencieusement — déjà documenté plus haut, toujours valable, pas retenté.
+  - `ProblemStateCard` (état PROBLEM, contenu différent — type de problème/note/chrono figé,
+    jamais dupliqué ailleurs) **reste affichée** : ce n'est pas la carte visée par la demande.
+    Mais elle n'avait **jamais été resserrée** lors des passes précédentes (`padding: lg`/
+    `gap: md`) et déborde de `mapArea` sur cet appareil étroit — chrono figé coupé, boutons
+    « Reprendre plus tard »/« Passer à la suivante » **invisibles** (bug fonctionnel réel :
+    aucun autre moyen d'agir sur l'état PROBLEM). **Partiellement corrigé** au passage : padding/
+    gap resserrés (`md`/`sm`, même token que les autres cartes) + boutons passés en rangée
+    (`flexDirection: 'row'`, `flex: 1` chacun) au lieu d'empilés — le chrono figé est maintenant
+    entièrement visible, **mais les 2 boutons d'action restent coupés** sur ce device précis
+    (contenu total encore trop haut pour l'espace laissé par `mapArea`). **Non résolu à ce
+    stade** — solutions possibles pour une prochaine passe : déplacer ces 2 boutons dans
+    `CurrentResidenceSheet` (même logique que « Signaler »), ou réduire la taille du chrono figé
+    (`PhaseTimer` y est en taille "hero" 44px, peut-être excessif pour un chrono secondaire). À
+    netraiter explicitement, pas oublié par accident.
+- **Barre de dev de `MissionScreenPreview.tsx` passée en overlay absolu** (sur demande) :
+  auparavant une vraie ligne en flux (fix de la session précédente contre une collision avec le
+  bas d'écran) ; elle chevauche maintenant le logo pendant le développement seulement (jamais
+  livré) — récupère la hauteur qu'elle prenait en flux. Aucun risque de récidive de l'ancien
+  bug (qui venait d'un offset `bottom` codé en dur, pas de la position en flux elle-même).
+- Vérifié sur device (TECNO KL4) : les 4 variantes affichent nettement plus de carte
+  (tracteur/itinéraire/repères/météo/recentrer tous visibles), y compris EN COURS + démo
+  hors-ligne+alerte (l'ancienne limite documentée est de facto résolue, la carte encombrante
+  ayant disparu). `tsc`/`eslint`/`jest` (27/27) verts.
+- **Fichiers touchés** : `MissionCard.tsx` (props `phaseLabel`/`phaseSeconds`/`phaseColor`
+  remplacent `missionSeconds`), `CurrentResidenceSheet.tsx` (4e bouton + layout colonne),
+  `MissionScreen.tsx` (retrait du rendu `CurrentResidenceProgressCard`, câblage des nouveaux
+  props), `ProblemStateCard.tsx` (resserrement + actions en rangée), `MissionScreenPreview.tsx`
+  (toolbar en overlay), `ComponentGalleryScreen.tsx`/`tests/components.test.tsx` (appels mis à
+  jour pour les nouveaux props `MissionCard`).
+
 ## Contrainte de vérification (ce VPS) — corrigée (2026-08-02)
 
 - **Ancienne hypothèse invalidée** : ce dépôt tourne en réalité sur une **machine Windows** (pas

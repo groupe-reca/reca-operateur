@@ -7,7 +7,6 @@ import { BottomTabBar } from '@/components/controls/BottomTabBar';
 import { FloatingActionButton } from '@/components/controls/FloatingActionButton';
 import { AlertCard } from '@/components/mission/AlertCard';
 import { AppHeader } from '@/components/mission/AppHeader';
-import { CurrentResidenceProgressCard } from '@/components/mission/CurrentResidenceProgressCard';
 import { CurrentResidenceSheet } from '@/components/mission/CurrentResidenceSheet';
 import { MissionCard } from '@/components/mission/MissionCard';
 import { OfflineIndicator } from '@/components/mission/OfflineIndicator';
@@ -64,7 +63,9 @@ export function MissionScreen({ state }: Props) {
           index={state.mission.index}
           total={state.mission.total}
           progressPct={state.mission.progressPct}
-          missionSeconds={state.mission.missionSeconds}
+          phaseLabel={state.stateLabel}
+          phaseSeconds={state.activeState === 'PROBLEM' ? (state.problem?.frozenSeconds ?? 0) : state.timerSeconds}
+          phaseColor={state.color}
           syncState={state.mission.syncState}
           etaLabel={state.mission.totalEtaLabel}
           onDetails={() => {}}
@@ -91,6 +92,12 @@ export function MissionScreen({ state }: Props) {
         ) : null}
 
         <View style={[styles.leftColumn, { left: insets.left + screenMargin, top: columnsTop }]}>
+          {/* The former CurrentResidenceProgressCard (état + chrono + adresse +
+              checklist) was removed — état/chrono now live in MissionCard's
+              third stat, and the address is already shown below in
+              CurrentResidenceSheet (2026-08-02 simplification, see
+              memory.md). ProblemStateCard stays: it carries problem-specific
+              info (type/note/frozen timer) that isn't shown anywhere else. */}
           {state.activeState === 'PROBLEM' && state.problem ? (
             <ProblemStateCard
               address={state.address}
@@ -100,16 +107,7 @@ export function MissionScreen({ state }: Props) {
               onNext={() => {}}
               onResumeLater={() => {}}
             />
-          ) : (
-            <CurrentResidenceProgressCard
-              stateLabel={state.stateLabel}
-              timerSeconds={state.timerSeconds}
-              color={state.color}
-              address={state.address}
-              steps={state.progressSteps ?? []}
-              onProblem={() => {}}
-            />
-          )}
+          ) : null}
           <FloatingActionButton icon={Crosshair} label="Recentrer" onPress={handleRecenter} />
           <GlassCard level="chip" radius="lg" style={styles.weatherPill}>
             <Icon icon={CloudSnow} color={colors.textSecondary} size={20} />
@@ -140,6 +138,7 @@ export function MissionScreen({ state }: Props) {
           address={state.address}
           distanceLabel={state.residenceDistanceLabel}
           etaLabel={state.residenceEtaLabel}
+          onProblem={() => {}}
         />
         <View style={{ paddingBottom: insets.bottom }}>
           <BottomTabBar active="carte" alertsCount={2} voiceActive onVoicePress={() => {}} />

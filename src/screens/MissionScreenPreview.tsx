@@ -39,14 +39,17 @@ export function MissionScreenPreview() {
 
   return (
     <View style={styles.root}>
-      {/* Dev-only toolbar as a real flex row (not an absolute overlay): a
-          fixed pixel offset here previously collided with the real bottom
-          UI (CurrentResidenceSheet + BottomTabBar) on a real phone, since
-          that section's actual height varies by device (see memory.md).
-          Taking real layout space instead guarantees no overlap on any
-          screen size. paddingTop: insets.top keeps it clear of the status
-          bar (this toolbar sits outside MissionScreen's own safe area). */}
-      <View style={[styles.devToolbar, { paddingTop: insets.top + spacing.xs }]}>
+      <View style={styles.screen}>
+        <MissionScreen state={current.state} />
+      </View>
+      {/* Dev-only toolbar as an absolute overlay on top of MissionScreen
+          (previously a real flex row pushing the screen down — see
+          memory.md). It's fine for it to cover the logo during dev: this
+          harness never ships, and reclaiming that flow height matters more
+          for calibrating the real screen. top: insets.top keeps it clear of
+          the status bar only (no bottom-offset guesswork this time, so no
+          risk of the earlier bottom-UI collision). */}
+      <View style={[styles.devToolbar, { top: insets.top }]}>
         <View style={styles.switcher}>
           {VARIANTS.map((variant, index) => (
             <PressableScale
@@ -70,9 +73,6 @@ export function MissionScreenPreview() {
             : `SQLite : session ${session ? formatTime(session.openedAt) : '—'} · ${mission ? '1 mission' : '0 mission'} · ${itemCount} résidences`}
         </Txt>
       </View>
-      <View style={styles.screen}>
-        <MissionScreen state={current.state} />
-      </View>
     </View>
   );
 }
@@ -85,6 +85,9 @@ function formatTime(isoDate: string): string {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   devToolbar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

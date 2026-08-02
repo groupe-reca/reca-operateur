@@ -256,6 +256,19 @@
   padding/gap réduits) ; fusion des lignes méta secteur/résidences/ETA essayée puis **annulée**
   (tronquait l'ETA silencieusement) — restée sur 2 lignes. Vérifié sur device : plus d'espace
   carte sur les 4 variantes, aucune régression. `tsc`/`eslint`/`jest` (27/27) verts.
+- [x] **Retrait de `CurrentResidenceProgressCard`** (2026-08-02) : sur signalement de
+  l'utilisateur (carte flottante jugée redondante avec `MissionCard`+`CurrentResidenceSheet`),
+  n'est plus rendue par `MissionScreen.tsx`. État+chrono déplacés dans le 3e stat de
+  `MissionCard` (remplace le temps total de mission) ; bouton « Signaler un problème » déplacé
+  en 4e position dans `CurrentResidenceSheet` (avec Appeler/Note/Itinéraire), qui passe en
+  layout colonne (infos pleine largeur puis rangée de boutons) pour ne plus wrapper le texte.
+  Barre de dev de `MissionScreenPreview` passée en overlay absolu sur le logo (récupère l'espace
+  qu'elle prenait en flux, sans risque de récidive de l'ancien bug — voir `memory.md`). Vérifié
+  sur device : les 4 variantes montrent beaucoup plus de carte. `tsc`/`eslint`/`jest` (27/27)
+  verts. **Suivi ouvert** : `ProblemStateCard` (état PROBLEM) resserrée au passage mais ses 2
+  boutons d'action restent coupés par `overflow:hidden` sur cet appareil étroit — chrono figé
+  visible, boutons « Reprendre plus tard »/« Passer à la suivante » non — voir détail et pistes
+  dans `memory.md`.
 
 ## Suivi / limitations déclarées
 

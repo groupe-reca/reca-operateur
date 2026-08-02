@@ -44,7 +44,9 @@ describe('components render', () => {
         index={3}
         total={28}
         progressPct={10}
-        missionSeconds={1112}
+        phaseLabel="En cours"
+        phaseSeconds={221}
+        phaseColor="#2ECC71"
         syncState="synced"
       />
     );

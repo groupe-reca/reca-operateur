@@ -49,7 +49,9 @@ export function ComponentGalleryScreen() {
           index={3}
           total={28}
           progressPct={10}
-          missionSeconds={1112}
+          phaseLabel="EN COURS"
+          phaseSeconds={221}
+          phaseColor={colors.success}
           syncState="synced"
           etaLabel="1h 45 min (est.)"
           onDetails={() => {}}
