@@ -6,7 +6,81 @@
 
 ## Plan actif
 
-- (aucun — prochain : Sprint 015 (Offline Mode), à planifier ici avant de coder)
+- (aucun — prochain : Sprint 016 (Voice Engine), à planifier ici avant de coder)
+
+## Archivé
+
+### ✅ Sprint 015 — Offline Mode, portée noyau (branche `sprint-015-offline-mode`, 2026-08-02)
+
+**Objectif** (Phase 09 Roadmap) : moteur de détection de connectivité décrit par
+`docs/08-Offline-Mode.md` — le réseau ne doit jamais contrôler l'exécution de la mission.
+
+**`docs/08` est volumineux** (détection réseau, cartes hors ligne Mapbox, médias, conflits
+multi-appareils, simulateur dev, batterie/stockage faible). **Portée réduite validée avec le
+propriétaire avant de coder** (question posée, réponse : « Noyau seulement ») :
+- **Dedans** : moteur pur de détection de connectivité, 4 états (`ONLINE`/`DEGRADED`/`OFFLINE`/
+  `RECOVERING` — réduit des 6 de `docs/08`, `SERVER_UNAVAILABLE`/`AUTHENTICATION_DEGRADED`
+  explicitement hors de cette passe, voir ci-dessous).
+- **Dehors, explicitement** : cartes hors ligne Mapbox (nécessite une vraie stratégie de
+  téléchargement de tuiles, sprint dédié) ; médias (jamais implémentés dans ce repo, `docs/07`
+  les diffère déjà) ; résolution de conflits multi-appareils (nécessite `reca-app`) ; simulateur
+  dev (`docs/08` "Simulations") ; `SERVER_UNAVAILABLE`/`AUTHENTICATION_DEGRADED` (nécessiteraient
+  un vrai ping serveur/refresh de jeton — le moteur ne teste que la connectivité réseau générale
+  cette passe, pas l'accessibilité spécifique du serveur RECA ni Supabase Auth).
+
+**Cohérence architecturale avec les moteurs existants** : comme le State Machine (Sprint 009-010),
+le GPS Engine (Sprint 011-012) et le Sync Engine (Sprint 013-014), ce moteur est **pur, aucun
+React, dépendances injectées**, testé isolément, **pas câblé dans `MissionContext`/`MissionScreen`
+cette passe** — même décision de portée répétée à chaque moteur de ce repo, pas une régression.
+Réutilise le `NetworkStatusProvider` déjà défini par le Sync Engine (`isOnline(): boolean`,
+`src/engines/sync/types.ts`) plutôt que d'en inventer un second.
+
+**Design** :
+- `src/engines/offline/types.ts` — `ConnectivityStatus = 'ONLINE'|'DEGRADED'|'OFFLINE'|
+  'RECOVERING'`, `OfflineEngineState { status, since, lastOnlineAt }` (volontairement minimal —
+  `pendingOperations` reste la responsabilité du Sync Engine, `docs/08` dit explicitement que
+  Offline Mode n'est pas responsable de « remplacer le Synchronization Engine » ; pas de
+  duplication), événements (`OfflineModeActivated`/`OfflineModeDeactivated`/
+  `ConnectivityDegraded`/`ConnectivityRecovered`, sous-ensemble pertinent de `docs/08`).
+- `src/engines/offline/offlineEngine.ts` — `createOfflineEngine({ clock, networkStatus,
+  consecutiveFailureThreshold, recoveryValidationDelaySeconds })`. **Aucun timer propre** (même
+  principe que GPS Engine, `docs/04` : « le moteur ne possède aucun timer propre ») — deux points
+  d'entrée appelés par l'appelant :
+  - `checkConnectivity()` : lit `networkStatus.isOnline()`, gère les transitions
+    ONLINE/DEGRADED↔OFFLINE↔RECOVERING↔ONLINE.
+  - `recordOperationOutcome(success)` : à appeler après chaque tentative réseau réelle (ex. Sync
+    Engine) — une seule requête échouée ne suffit pas (`docs/08` : « ne doit pas suffire »),
+    `consecutiveFailureThreshold` échecs consécutifs avec réseau système "en ligne" → `DEGRADED`.
+  - `OFFLINE → RECOVERING` dès que `networkStatus.isOnline()` redevient vrai ; `RECOVERING →
+    ONLINE` seulement après validation (délai + un succès confirmé), jamais immédiat (`docs/08` :
+    « ne doit pas afficher immédiatement En ligne avant cette validation »).
+- `src/engines/offline/index.ts` — barrel.
+- `tests/offlineEngine.test.ts` — transitions ONLINE→DEGRADED (échecs consécutifs, réseau système
+  toujours dispo), →OFFLINE (réseau système indisponible, immédiat, pas besoin d'échecs
+  consécutifs), OFFLINE→RECOVERING→ONLINE (validation avant confirmation), pas de flap sur un
+  seul échec isolé, journalisation des transitions (`getEvents()`).
+
+**Critères de réussite (adaptés à la portée noyau)** : transitions correctes et testées ; aucune
+dépendance à React ; `tsc`/`eslint`/`jest` verts.
+
+**Hors scope, suivi explicite** : câblage `MissionContext.offlineState` (actuellement un
+placeholder typé, comme `gpsState`/`synchronizationState`) ; cartes hors ligne ; médias ; conflits
+multi-appareils ; simulateur dev ; `SERVER_UNAVAILABLE`/`AUTHENTICATION_DEGRADED`.
+
+**Réalisé conformément au plan, du premier coup** : `src/engines/offline/` (`types.ts`,
+`offlineEngine.ts`, `index.ts`). `createOfflineEngine({clock, networkStatus,
+consecutiveFailureThreshold=3, recoveryValidationDelaySeconds=5})` — chaque transition source
+associée à un seul type d'événement (`RECOVERING` n'est atteignable que depuis `OFFLINE`, donc
+`ONLINE`←`RECOVERING` suffit à savoir qu'une vraie période hors ligne vient de se terminer, pas
+besoin d'un drapeau séparé). `recordOperationOutcome(true)` pendant `RECOVERING` confirme
+`ONLINE` immédiatement (signal plus fort que le délai seul) plutôt que d'attendre
+`recoveryValidationDelaySeconds`. 9 tests (`tests/offlineEngine.test.ts`, patron `createMutableClock`
+repris de `tests/gpsEngine.test.ts`) : démarrage `ONLINE`, 1 échec insuffisant, N échecs
+consécutifs → `DEGRADED`, succès après `DEGRADED` réinitialise le compteur, réseau système
+indisponible → `OFFLINE` immédiat, cycle complet `OFFLINE→RECOVERING→ONLINE` avec délai respecté,
+confirmation immédiate par succès réel pendant `RECOVERING`, `lastOnlineAt` figé pendant `OFFLINE`,
+abonnement/désabonnement aux événements. `tsc`/`eslint`/`jest` (100/100, 11 suites)/`expo-doctor`
+(20/20) verts. **Impact documentation** : `tasks.md`, `file-index.md`.
 
 ## Archivé
 

@@ -140,8 +140,23 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     le même moteur que la production), `index.ts` (barrel). **Pas encore câblé** dans
     `MissionContext`/`MissionScreen`, pas de capteur `expo-location` réel (même limite que le
     State Machine).
-  - `voice/` (informe) · `sync/` (transmet) · `offline/` (continuité) — encore vides (sprints
-    futurs).
+  - `sync/` (Sprint 013-014) — moteur pur de synchronisation (`docs/07`), aucun React, `Db`/
+    `Clock`/`transport`/`network` injectés : `backoff.ts` (`computeBackoffDelaySeconds`, testé),
+    `priority.ts` (`selectBatch` — ordre intra-mission jamais cassé), `syncEngine.ts`
+    (`createSynchronizationEngine` : `runSyncCycle`/`recoverOnStartup`/`retryOperation`/
+    `getSynchronizationState`/`on`/`getEvents`), `types.ts`, `index.ts`. Transport réel :
+    `src/integrations/supabase/supabaseSyncTransport.ts`. **Pas encore câblé** dans
+    `MissionContext` (même limite que State Machine/GPS Engine).
+  - `offline/` (Sprint 015, 2026-08-02, **portée noyau** — voir `plans.md`) — moteur pur de
+    détection de connectivité (`docs/08`), aucun timer propre (même principe que le GPS Engine) :
+    `types.ts` (`ConnectivityStatus` = 4 états `ONLINE/DEGRADED/OFFLINE/RECOVERING`, réduit des 6
+    de `docs/08` — `SERVER_UNAVAILABLE`/`AUTHENTICATION_DEGRADED` différés), `offlineEngine.ts`
+    (`createOfflineEngine({clock, networkStatus, consecutiveFailureThreshold?,
+    recoveryValidationDelaySeconds?})` : `checkConnectivity()`/`recordOperationOutcome()`/
+    `getState()`/`on()`/`getEvents()` — réutilise `NetworkStatusProvider` du Sync Engine, pas de
+    second contrat réseau inventé), `index.ts`. **Pas encore câblé** dans
+    `MissionContext.offlineState` (même limite que les 3 autres moteurs).
+  - `voice/` (informe) — encore vide (Sprint 016, Phase 10).
   - `map/mapCameraConfig.ts` (Sprint 005-006) — **seule partie du Map Engine réellement « sans
     React »** : constantes caméra (pitch, durées, paliers de zoom), `zoomForState` (pur, testé),
     `cameraPaddingTopFor` (dérive l'offset caméra pour l'ancre du tracteur). Le rendu Mapbox
@@ -265,6 +280,11 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   jestSetup.js` (`jest.setupFiles`) + `moduleNameMapper` `^react-native-worklets$` →
   `react-native-worklets/src/mock.ts` (**pas** `react-native-reanimated/mock.js`, qui réimporte
   l'entrée réelle et plante sous Jest — voir `memory.md`).
+- `tests/offlineEngine.test.ts` (Sprint 015, 2026-08-02) — 9 tests du moteur Offline : démarrage
+  `ONLINE`, seuil d'échecs consécutifs avant `DEGRADED`, succès réinitialise le compteur, réseau
+  système indisponible → `OFFLINE` immédiat, cycle `OFFLINE→RECOVERING→ONLINE` avec délai de
+  validation respecté, confirmation immédiate par succès réel pendant `RECOVERING`,
+  `lastOnlineAt` figé hors ligne, abonnement/désabonnement.
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)

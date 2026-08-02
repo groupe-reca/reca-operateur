@@ -273,7 +273,20 @@
   immédiat, lot partiellement accepté, doublon/réponse perdue — effet réel compté 1 seule fois
   malgré 2 envois —, récupération `PROCESSING`, 250 opérations en lots ordonnés, réessai manuel,
   intégration bout-en-bout avec le State Machine réel sur le cas résidences adjacentes).
-- [ ] **Sprint 015 — Offline Mode** (Phase 09).
+- [x] **Sprint 015 — Offline Mode, portée noyau** (Phase 09, branche `sprint-015-offline-mode`,
+  2026-08-02, **portée réduite validée avec le propriétaire** — `docs/08` couvre aussi les cartes
+  hors ligne/médias/conflits multi-appareils/simulateur dev, tous explicitement hors de cette
+  passe, voir `plans.md`). Moteur pur `src/engines/offline/` (aucun timer propre, même principe
+  que le GPS Engine) : 4 états `ONLINE/DEGRADED/OFFLINE/RECOVERING` (réduit des 6 de `docs/08` —
+  `SERVER_UNAVAILABLE`/`AUTHENTICATION_DEGRADED` différés, nécessiteraient un vrai ping serveur/
+  refresh de jeton). `checkConnectivity()` (lit `NetworkStatusProvider`, réutilisé du Sync Engine
+  plutôt que dupliqué) gère OFFLINE/RECOVERING/ONLINE ; `recordOperationOutcome()` (appelé par
+  l'appelant après chaque tentative réseau réelle) gère ONLINE↔DEGRADED — une seule requête
+  échouée ne suffit jamais (`consecutiveFailureThreshold`). Retour en ligne validé (délai ou
+  succès réel confirmé), jamais immédiat. **Hors scope, non câblé** : `MissionContext.offlineState`
+  reste un placeholder typé — même décision de portée que State Machine/GPS/Sync Engine (moteur
+  prêt et testé, aucun appelant réel encore). Vérifié : `tsc`/`eslint`/`jest` (100/100, 11 suites,
+  dont `tests/offlineEngine.test.ts` — 9 tests)/`expo-doctor` (20/20) verts.
 - [ ] **Sprint 016 — Voice Engine** (Phase 10).
 - [ ] **Sprint 017-019 — Auth, mission assignée, fin de mission, mode développement** (Phase 11).
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
