@@ -6,7 +6,101 @@
 
 ## Plan actif
 
-### 🔄 Sprint 017 (partie 1/N) — Câblage réel de MissionContext (branche
+*(aucun — voir `tasks.md` pour le prochain sprint à choisir)*
+
+## Archivé
+
+### ✅ Sprint 018 — Fin de mission (branche `sprint-018-fin-de-mission`, 2026-08-02)
+
+**Objectif** (`docs/11-Roadmap.md` Phase 11, écran « Fin de mission » + suivi ouvert « bouton UI
+Fermer la mission » déjà noté dans `tasks.md` depuis le câblage Supabase) : `requestMissionComplete`
+(State Machine, Sprint 009-010) et son mapping serveur (`SupabaseSyncTransport`, câblage Supabase)
+existent déjà et fonctionnent — il ne manque que l'écran et le bouton qui l'appellent. **Choisi
+comme prochain sprint avec le propriétaire** (alternatives écartées : Sprint 017 partie 2/N
+capteurs réels GPS/réseau — plus gros, nouveaux modules natifs ; Sprint 019 mode développement —
+moins utile sans capteurs réels à simuler).
+
+**Condition d'éligibilité** (ne pas dupliquer la règle métier — la lire directement de la même
+source que `requestMissionComplete` : `isActiveItemState`, `src/engines/state-machine/
+itemTransitions.ts`) : mission chargée, `mission.status !== 'COMPLETED'`, et aucun `MissionItem` en
+`WAITING` ni dans `ACTIVE_ITEM_STATES` (`EN_ROUTE`/`APPROACHING`/`IN_PROGRESS`). Un item `PROBLEM`
+ou `SKIPPED` restant **n'empêche pas** la fermeture — c'est exactement le cas
+`terminee_avec_anomalies` déjà géré par `SupabaseSyncTransport` (règle métier confirmée au câblage
+Supabase, pas réinventée ici).
+
+**Design** :
+1. **`deriveEndOfMissionState(ctx, now): EndOfMissionState | null`** (nouveau, pur, testé,
+   `src/screens/deriveEndOfMissionState.ts`, même famille que `deriveMissionScreenState.ts`) —
+   `null` tant que la condition d'éligibilité ci-dessus n'est pas remplie (mission encore active,
+   ou déjà fermée/absente — ces derniers cas restent le repli générique existant, pas cet écran).
+   Sinon retourne : secteur/date, total résidences, décompte par statut final
+   (`COMPLETED`/`PROBLEM`/`SKIPPED`), liste des résidences à problème (adresse/`problemCode`/note,
+   pour l'item « problèmes » du spec), durée de mission (`mission.actualStartAt` → `now`, même
+   convention non-tickante que `deriveMissionScreenState`), `syncState`/`pendingOperations` (déjà
+   exposés par `MissionContextValue.synchronizationState`, aucune donnée inventée).
+2. **`EndOfMissionScreen.tsx`** (nouveau, présentation pure, `src/screens/`, même statut que
+   `MissionScreen.tsx` — reçoit un `EndOfMissionState` + `onClose`/`closing`/`closeError` en props,
+   aucun accès Supabase/State Machine direct) : résumé, résidences terminées, problèmes, durées,
+   état de synchronisation (`SyncIndicator`), opérations en attente — les 7 éléments du spec
+   `docs/11`. Bouton « Fermer la mission » (`PressableScale`+`Txt`, tokens existants, aucun nouveau
+   composant générique). **Confirmation locale** (spec) : après succès, le bouton devient un état
+   confirmé (« Mission fermée » + coche) plutôt qu'un blocage réseau — la fermeture est déjà écrite
+   localement avant toute synchronisation (`docs/07` « écriture locale d'abord »), cohérent avec
+   tous les moteurs existants.
+3. **`closeMission(): Promise<void>`** ajouté à `MissionContextValue` (`MissionContext.tsx`), même
+   patron que `reportProblem`/`resolveProblem`/`skipItem` : appelle
+   `stateMachine.requestMissionComplete(mission.id)`, puis sur succès recharge **mission ET items**
+   (`afterMutation` actuel ne recharge que les items — `mission.status` doit aussi être rafraîchi
+   depuis `missionRepo.getById`, sinon l'écran ne verrait jamais son propre succès) + déclenche un
+   cycle de sync immédiat (déjà fait par `afterMutation`, la fermeture est la feuille de temps,
+   autant la pousser tout de suite si le réseau est là).
+4. **`LiveMissionScreen.tsx`** : quand `deriveMissionScreenState` retourne `null`, essayer
+   `deriveEndOfMissionState` avant le repli générique actuel — rend `EndOfMissionScreen` si non nul,
+   sinon garde le message honnête existant (« Aucune résidence active pour le moment » — reste le
+   repli pour mission absente/déjà fermée, l'écran « Aucune mission » réel du spec restant hors
+   scope, différé comme documenté au Sprint 017).
+
+**Hors scope, explicitement différé** : écran « Aucune mission » dédié (spec docs/11, différent de
+« Fin de mission » — condition = pas de mission du tout, pas seulement mission fermée) ; capteur GPS
+réel, capteur réseau réel (inchangé depuis le Sprint 017) ; écrans Paramètres/Développement (Sprint
+019) ; export/impression du résumé de fin de mission (non listé par le spec) ; annulation de la
+fermeture (`docs/09` : `CANCELLED` ne doit jamais être produit par l'opérateur, la fermeture n'est
+donc pas réversible côté app — cohérent avec la règle métier déjà validée au câblage Supabase).
+
+**Vérification** : tests purs (`deriveEndOfMissionState` — éligible/inéligible sur chaque cas :
+item `WAITING` restant, item actif restant, mission déjà `COMPLETED`, décompte problèmes/durées) ;
+test d'intégration (`missionContext.test.tsx` — `closeMission` avec State Machine réel : succès
+quand éligible, refus sinon, `mission.status` rafraîchi côté contexte) ; `tsc`/`eslint`/`jest`
+verts ; vérifié sur device si une mission dans cet état est disponible (sinon noté comme suivi
+ouvert, même pattern que le Sprint 017).
+
+**Réalisé conformément au plan, avec un écart découvert en testant (pas une déviation de
+conception) :**
+- Points 1/2/3/4 implémentés tels que décrits : `deriveEndOfMissionState.ts` (pur, testé,
+  `tests/deriveEndOfMissionState.test.ts`) ; `EndOfMissionScreen.tsx` (résumé, résidences à
+  reprendre, `SyncIndicator`+opérations en attente, bouton « Fermer la mission » avec état
+  confirmé local) ; `MissionContext.closeMission()` (recharge `mission` via `missionRepo.getById`
+  en plus des items, retourne le `TransitionResult` brut) ; `LiveMissionScreen.tsx` essaie
+  `deriveEndOfMissionState` avant le repli générique existant.
+- **Gap découvert en écrivant le test d'intégration de succès** : la mission de démo
+  (`seedDemoMissionIfEmpty`) reste `READY` indéfiniment dans cet environnement — le graphe
+  `docs/09` n'autorise `COMPLETED` que depuis `IN_PROGRESS`, et rien ne fait jamais cette
+  transition (le bouton « démarrer » de l'écran Mission active, `docs/11`, reste hors scope depuis
+  le Sprint 017). Une vraie mission Supabase n'a pas ce problème (`fetchAssignedMission.ts` mappe
+  déjà `IN_PROGRESS` quand `statut === 'en_cours'` côté serveur). Pas corrigé dans le code
+  (inventer un démarrage automatique aurait été une règle métier non validée) — le test
+  d'intégration simule directement la transition `requestMissionStart` via une seconde instance de
+  State Machine sur le même faux `Db`, documenté en commentaire dans le test. Limitation notée dans
+  `tasks.md` comme suivi ouvert (environnement démo seulement, pas un bug de ce sprint).
+- **Vérification** : `tsc --noEmit`/`eslint .`/`npx jest` tous verts (137/137 tests, dont 7
+  nouveaux `deriveEndOfMissionState.test.ts` + 2 nouveaux tests d'intégration `closeMission` dans
+  `missionContext.test.tsx`), `npx expo-doctor` 20/20. **Non vérifiée sur device** : aucune mission
+  réelle actuellement dans l'état éligible (Mission #9 déjà `COMPLETED`) — suivi ouvert non
+  bloquant, même pattern que le Sprint 017.
+
+## Archivé
+
+### ✅ Sprint 017 (partie 1/N) — Câblage réel de MissionContext (branche
 `sprint-017-mission-context-wiring`, 2026-08-02)
 
 **Objectif** (Phase 11 Roadmap « Intégration complète ») : la Phase 11 est énorme — relie tous

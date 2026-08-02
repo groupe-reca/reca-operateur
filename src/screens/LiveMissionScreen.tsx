@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useMissionContext } from '@/context/MissionContext';
 import { colors, spacing } from '@/config/theme';
 
+import { deriveEndOfMissionState } from './deriveEndOfMissionState';
 import { deriveMissionScreenState } from './deriveMissionScreenState';
+import { EndOfMissionScreen } from './EndOfMissionScreen';
 import { MissionScreen } from './MissionScreen';
 import { Txt } from '../components/ui/Txt';
 
@@ -15,6 +17,9 @@ import { Txt } from '../components/ui/Txt';
 // ComponentGalleryScreen).
 export function LiveMissionScreen() {
   const ctx = useMissionContext();
+  const [closing, setClosing] = useState(false);
+  const [closed, setClosed] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
 
   // Deliberately not a live ticker (see deriveMissionScreenState.ts) —
   // re-derived only when the underlying mission data actually changes, not
@@ -24,9 +29,25 @@ export function LiveMissionScreen() {
     () => deriveMissionScreenState(ctx, new Date()),
     [ctx.mission, ctx.activeMissionItem, ctx.allMissionItems, ctx.synchronizationState, ctx.offlineState] // eslint-disable-line react-hooks/exhaustive-deps
   );
+  const endOfMissionState = useMemo(
+    () => deriveEndOfMissionState(ctx, new Date()),
+    [ctx.mission, ctx.allMissionItems, ctx.synchronizationState] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const problemItem = ctx.allMissionItems.find((item) => item.status === 'PROBLEM') ?? null;
   const targetItemId = problemItem?.id ?? ctx.activeMissionItem?.id ?? null;
+
+  async function handleCloseMission() {
+    setClosing(true);
+    setCloseError(null);
+    const result = await ctx.closeMission();
+    setClosing(false);
+    if (result.success) {
+      setClosed(true);
+    } else {
+      setCloseError(result.errorMessage ?? 'La fermeture de la mission a échoué.');
+    }
+  }
 
   if (ctx.loading) {
     return (
@@ -38,9 +59,25 @@ export function LiveMissionScreen() {
     );
   }
 
-  // No active/problem residence to show — the real "Aucune mission" screen
-  // (docs/11 Phase 11, écrans finaux) is a separate, out-of-scope sprint;
-  // this is a minimal honest fallback, not that screen.
+  // Sprint 018 — no residence left to work on: show the real "Fin de
+  // mission" screen when the mission is eligible to close (see
+  // deriveEndOfMissionState.ts), not the generic fallback below.
+  if (endOfMissionState) {
+    return (
+      <EndOfMissionScreen
+        state={endOfMissionState}
+        onClose={handleCloseMission}
+        closing={closing}
+        closed={closed}
+        closeError={closeError}
+      />
+    );
+  }
+
+  // No active/problem residence and not eligible to close (no mission at
+  // all, or already closed) — the real "Aucune mission" screen (docs/11
+  // Phase 11, écrans finaux) is a separate, out-of-scope sprint; this is a
+  // minimal honest fallback, not that screen.
   if (!screenState || !targetItemId) {
     return (
       <View style={styles.fallback}>

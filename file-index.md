@@ -35,7 +35,8 @@
   `AuthProvider`, un `AuthGate` interne : non authentifié → `LoginScreen`, sinon
   `MissionProvider` (Sprint 007-008 — SQLite/`MissionContext`, `employeeId` passé depuis
   `useAuth()`) → **`LiveMissionScreen`** (Sprint 017 partie 1/N, 2026-08-02 — remplace enfin
-  `MissionScreenPreview`, promesse faite depuis le Sprint 004). `MissionScreenPreview`/
+  `MissionScreenPreview`, promesse faite depuis le Sprint 004 ; rend aussi `EndOfMissionScreen`
+  depuis le Sprint 018 quand la mission est éligible à la fermeture). `MissionScreenPreview`/
   `ComponentGalleryScreen` restent dans le repo (référence/tests) mais ne sont plus le point
   d'entrée.
 - `metro.config.js` — Metro Expo par défaut + `react-native-svg-transformer` (import `.svg`
@@ -61,13 +62,16 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 
 - `src/app/` — composition racine (providers, thème, montage). Vide.
 - `src/screens/`
-  - `LiveMissionScreen.tsx` (Sprint 017 partie 1/N, 2026-08-02, **nouveau point d'entrée réel**)
-    — `useMissionContext()` → `deriveMissionScreenState(ctx, new Date())` (mémoïsé sur les champs
-    utiles, pas sur `ctx` entier) → `MissionScreen`. Repli minimal texte pendant `loading` ou
-    quand aucune résidence active/problème n'existe (le vrai écran « Aucune mission », `docs/11`
-    Phase 11, reste hors scope). Câble `onResolveProblem`/`onSkipItem` aux commandes réelles du
-    contexte ; **`onReportProblem` volontairement sans effet** — aucune UI/taxonomie de
-    `problemCode` documentée, voir `memory.md`.
+  - `LiveMissionScreen.tsx` (Sprint 017 partie 1/N, 2026-08-02, **nouveau point d'entrée réel** ;
+    étendu Sprint 018) — `useMissionContext()` → `deriveMissionScreenState(ctx, new Date())`
+    (mémoïsé sur les champs utiles, pas sur `ctx` entier) → `MissionScreen`. Essaie d'abord
+    `deriveEndOfMissionState(ctx, new Date())` (Sprint 018) : non nul → rend `EndOfMissionScreen`
+    (mission éligible à la fermeture) au lieu du repli générique. Repli minimal texte pendant
+    `loading` ou quand aucune résidence active/problème/fin de mission n'existe (le vrai écran
+    « Aucune mission », `docs/11` Phase 11, reste hors scope). Câble `onResolveProblem`/`onSkipItem`
+    aux commandes réelles du contexte ; **`onReportProblem` volontairement sans effet** — aucune
+    UI/taxonomie de `problemCode` documentée, voir `memory.md`. `handleCloseMission` (Sprint 018)
+    gère `closing`/`closed`/`closeError` local, appelle `ctx.closeMission()`.
   - `deriveMissionScreenState.ts` (Sprint 017 partie 1/N, pur, testé
     `tests/deriveMissionScreenState.test.ts`) — traduit `MissionContextValue` (mission/résidence
     active/items/sync/offline) vers `MissionScreenState` sans toucher `MissionScreen`. Cherche un
@@ -76,6 +80,19 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     placeholder honnête plutôt qu'inventés (`residenceDistanceLabel`/`residenceEtaLabel`/
     `totalEtaLabel`/`alerts`/`tasks`) — `docs/10` « ne jamais masquer une erreur par une valeur
     fictive ». `missionSeconds`/`timerSeconds` calculés une fois à la dérivation, pas un ticker.
+  - `deriveEndOfMissionState.ts` (Sprint 018, pur, testé
+    `tests/deriveEndOfMissionState.test.ts`) — `null` sauf si la mission est éligible à la
+    fermeture : chargée, `status !== 'COMPLETED'`, aucun `MissionItem` `WAITING` ni actif
+    (`isActiveItemState`, même source que `requestMissionComplete` côté State Machine — jamais
+    dupliquée). Un item `PROBLEM`/`SKIPPED` restant **n'empêche pas** l'éligibilité (cas
+    `terminee_avec_anomalies`, règle métier confirmée au câblage Supabase). Sinon retourne
+    résumé/décompte/liste des résidences à problème/durée de mission/état de sync/opérations en
+    attente — tout lu de `MissionContextValue`, rien d'inventé.
+  - `EndOfMissionScreen.tsx` (Sprint 018) — écran « Fin de mission » (`docs/11` Écrans finaux) :
+    présentation pure (props `state`/`onClose`/`closing`/`closed`/`closeError`), aucun accès
+    Supabase/State Machine direct. Résumé + résidences à reprendre + `SyncIndicator`/opérations en
+    attente + bouton « Fermer la mission » (confirmation locale : devient « Mission fermée » après
+    succès, pas un blocage réseau).
   - `MissionScreen.tsx` — **écran produit**, désormais **piloté par les données**
     (Sprint 004) : accepte une prop `state: MissionScreenState` + 3 callbacks optionnels
     (`onReportProblem`/`onResolveProblem`/`onSkipItem`, Sprint 017 partie 1/N, no-op par défaut),
@@ -201,21 +218,23 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     l'idéal « moteur sans React » de `docs/02`, notée dans `memory.md` (API `@rnmapbox/maps`
     intrinsèquement basée sur des composants).
 - `src/context/`
-  - `MissionContext.tsx` (Sprint 007-008, réécrit Sprint 017 partie 1/N — 2026-08-02) —
-    `MissionProvider`/`useMissionContext()` : au montage, instancie les 5 moteurs réels (State
-    Machine/GPS/Sync/Offline/Voice, refs stables) puis charge (migrations →
+  - `MissionContext.tsx` (Sprint 007-008, réécrit Sprint 017 partie 1/N — 2026-08-02 ; étendu
+    Sprint 018) — `MissionProvider`/`useMissionContext()` : au montage, instancie les 5 moteurs
+    réels (State Machine/GPS/Sync/Offline/Voice, refs stables) puis charge (migrations →
     **`fetchAssignedMission` si `employeeId` fourni, sinon/en repli seed démo si vide** → mission
     sélectionnée sans ambiguïté via `assigned?.id ?? missions[0]?.id` → session ouverte →
     `offlineEngine.checkConnectivity()`/`syncEngine.recoverOnStartup()`/`runSyncCycle()`). Expose
     `mission`/`activeMissionItem`/`nextMissionItems`/`allMissionItems`/`gpsState`
     (`{available: false}`, capteur réel différé)/`synchronizationState`/`offlineState` (ces 2
     derniers **réels**, plus des placeholders) + les commandes `reportProblem`/`resolveProblem`/
-    `skipItem` (State Machine réel → resync → pompe Voice Engine). `deriveActiveAndNext` (exporté,
-    pur, testé) : résidence active + suivantes, indépendant de React/DB — utilise
-    `isActiveItemState` du State Machine (Sprint 009-010) plutôt qu'une constante dupliquée.
-    `getDbOverride`/`syncTransportOverride`/`speakerOverride` injectables (tests uniquement — la
-    règle « jamais de vrai réseau touché en test » s'applique aussi au Sync/Voice ici, voir
-    `tests/missionContext.test.tsx`).
+    `skipItem`/**`closeMission`** (Sprint 018 : `requestMissionComplete`, puis — contrairement aux
+    3 autres — recharge aussi `mission` via `missionRepo.getById`, pas seulement les items, sinon
+    l'écran ne verrait jamais son propre succès ; retourne le `TransitionResult` brut pour que
+    l'écran affiche une vraie erreur). `deriveActiveAndNext` (exporté, pur, testé) : résidence
+    active + suivantes, indépendant de React/DB — utilise `isActiveItemState` du State Machine
+    (Sprint 009-010) plutôt qu'une constante dupliquée. `getDbOverride`/`syncTransportOverride`/
+    `speakerOverride` injectables (tests uniquement — la règle « jamais de vrai réseau touché en
+    test » s'applique aussi au Sync/Voice ici, voir `tests/missionContext.test.tsx`).
   - `AuthContext.tsx` (2026-08-02) — `AuthProvider`/`useAuth()` : session Supabase Auth
     (email/mot de passe), résout `employeeId` (`employees.user_id = auth.uid()`) une fois par
     session. Seul point d'entrée authentification — aucun composant n'appelle
@@ -345,13 +364,22 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   s'il ne peut pas être `activeMissionItem`, priorité PROBLEM sur un item actif si les deux
   existent, `offline` présent seulement hors `ONLINE`, résidences carte plafonnées à 5 en filtrant
   celles sans coordonnées.
-- `tests/missionContext.test.tsx` (Sprint 017 partie 1/N, 2026-08-02) — 4 tests d'intégration
-  réelle (`MissionProvider` sur un faux `Db`/transport Sync/`Speaker` injectés — jamais de vrai
-  réseau/synthèse, voir `getDbOverride`/`syncTransportOverride`/`speakerOverride`) : chargement de
-  la mission de démo (premier item EN_ROUTE actif), `reportProblem` → `PROBLEM` +
+- `tests/missionContext.test.tsx` (Sprint 017 partie 1/N, 2026-08-02 ; étendu Sprint 018) — 6 tests
+  d'intégration réelle (`MissionProvider` sur un faux `Db`/transport Sync/`Speaker` injectés —
+  jamais de vrai réseau/synthèse, voir `getDbOverride`/`syncTransportOverride`/`speakerOverride`) :
+  chargement de la mission de démo (premier item EN_ROUTE actif), `reportProblem` → `PROBLEM` +
   `activeMissionItem` redevient `null`, `resolveProblem` → retour à un état actif, `skipItem` →
-  `SKIPPED` + opération de sync mise en file. Mutations enveloppées dans `act()` (State Machine →
-  contexte → re-render, comme tout hook React testé).
+  `SKIPPED` + opération de sync mise en file, `closeMission` refusé tant qu'un item
+  `WAITING`/actif subsiste, `closeMission` réussit une fois tous les items résolus (`SKIPPED`
+  autorisé) — simule le `requestMissionStart` READY→IN_PROGRESS directement via une seconde
+  instance de State Machine sur le même faux `Db` plutôt que d'exposer une commande de contexte
+  sans appelant réel (le « démarrer » de l'écran Mission active, `docs/11`, reste hors scope ;
+  une vraie mission Supabase arrive déjà `IN_PROGRESS`, voir `fetchAssignedMission.ts`). Mutations
+  enveloppées dans `act()` (State Machine → contexte → re-render, comme tout hook React testé).
+- `tests/deriveEndOfMissionState.test.ts` (Sprint 018, 2026-08-02) — 7 tests purs : `null` sans
+  mission, `null` mission déjà `COMPLETED`, `null` tant qu'un item `WAITING` ou actif subsiste,
+  éligible avec un item `PROBLEM`/`SKIPPED` restant (n'empêche pas la fermeture), décompte/durée/
+  état de sync/opérations en attente dérivés sans valeur inventée.
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)

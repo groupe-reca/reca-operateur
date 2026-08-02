@@ -791,8 +791,8 @@
   `'terminee'` si tous les items sont `terminee`, sinon **`'terminee_avec_anomalies'`** (au moins
   un `a_reprendre`) — c'est le mécanisme exact qui alerte le superviseur, dérivé automatiquement
   par `SupabaseSyncTransport` (une requête `count` sur `mission_items` avant l'update de Mission).
-  **Le bouton UI « Fermer la mission » lui-même n'existe pas encore** (`Mission`/`Plus` restent
-  des onglets placeholders) — suivi ouvert dans `tasks.md`.
+  **Le bouton UI « Fermer la mission » livré au Sprint 018** (`EndOfMissionScreen.tsx` +
+  `MissionContext.closeMission()`) — voir plans.md pour le détail.
 - **Convention id serveur = id local, sans exception, pour toute mission réelle** : contrairement
   au seed de démo (`seedDemoMissionIfEmpty`, UUID générés localement, jamais synchronisés),
   `fetchAssignedMission` écrit les entités locales avec les **id Supabase tels quels** — c'est ce
@@ -1056,6 +1056,38 @@
   verts. **Suivi ouvert, non bloquant** : revalider avec une mission ayant encore des résidences
   WAITING/EN_ROUTE (démo ou nouvelle assignation Supabase) pour voir `MissionScreen` réellement
   peuplé (carte/chronos/boutons) plutôt que seulement le repli.
+
+## Sprint 018 — Fin de mission (2026-08-02)
+
+- **Choisi comme prochain sprint avec le propriétaire** (alternatives écartées : Sprint 017
+  partie 2/N capteurs réels GPS/réseau — plus gros, nouveaux modules natifs ; Sprint 019 mode
+  développement — moins utile sans capteurs réels à simuler). Ferme le suivi ouvert « bouton UI
+  Fermer la mission » (`requestMissionComplete` déjà câblé côté serveur depuis le câblage
+  Supabase, restait sans appelant UI).
+- **Un item `PROBLEM`/`SKIPPED` restant n'empêche PAS de fermer la mission** — c'est exactement le
+  cas `terminee_avec_anomalies` (règle métier confirmée au câblage Supabase, voir plus haut), pas
+  une erreur à bloquer. Seuls `WAITING` et les états actifs (`EN_ROUTE`/`APPROACHING`/
+  `IN_PROGRESS`) bloquent, exactement la condition déjà encodée dans
+  `requestMissionComplete` — `deriveEndOfMissionState.ts` la lit de `isActiveItemState` plutôt que
+  de la dupliquer, pour que les deux ne puissent jamais diverger.
+- **Piège découvert en écrivant le test d'intégration `closeMission` (succès)** : la mission de
+  démo (`seedDemoMissionIfEmpty`) reste `status: 'READY'` pour toujours dans cet environnement —
+  le graphe `docs/09` n'autorise `COMPLETED` que depuis `IN_PROGRESS`, et **rien dans le repo
+  actuel ne fait jamais cette transition** : le bouton « démarrer » qui l'appellerait vit sur
+  l'écran « Mission active » (`docs/11` Écrans finaux), toujours hors scope. Une vraie mission
+  Supabase n'a pas ce problème : `fetchAssignedMission.ts` la mappe déjà `IN_PROGRESS` si
+  `statut === 'en_cours'` côté serveur. **À garder en tête pour le sprint qui livrera l'écran
+  Mission active** : sans son bouton « démarrer », toute mission créée localement (démo ou future)
+  reste bloquée en `READY` et ne pourra jamais être fermée via `EndOfMissionScreen`.
+- **`MissionContext.closeMission()` recharge `mission` en plus des items** — contrairement à
+  `reportProblem`/`resolveProblem`/`skipItem` (qui ne mutent qu'un `MissionItem`, `afterMutation`
+  suffisait), fermer la mission mute la `Mission` elle-même. Sans `missionRepo.getById` après le
+  succès, `MissionContext.mission.status` resterait périmé en mémoire React et l'écran ne verrait
+  jamais son propre succès malgré une écriture DB réussie.
+- **`closeMission` retourne le `TransitionResult` brut** (pas juste `Promise<void>` comme les 3
+  autres commandes) — `EndOfMissionScreen` a besoin d'un vrai message d'erreur si la fermeture est
+  refusée (ex. item encore actif détecté entre la dérivation de l'écran et le clic), plutôt
+  qu'un échec silencieux.
 
 ## Système de mémoire
 
