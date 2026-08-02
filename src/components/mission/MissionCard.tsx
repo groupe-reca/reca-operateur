@@ -85,7 +85,7 @@ export function MissionCard({
           <Txt style={styles.statValue}>{`${index}/${total}`}</Txt>
         </View>
         <View style={styles.stat}>
-          <Txt variant="labelCaps" color={colors.textSecondary}>
+          <Txt variant="labelCaps" color={colors.textSecondary} numberOfLines={1}>
             Progression
           </Txt>
           <Txt style={styles.statValue}>{`${progressPct}%`}</Txt>
@@ -103,8 +103,8 @@ export function MissionCard({
 }
 
 const styles = StyleSheet.create({
-  card: { padding: spacing.lg, gap: spacing.md },
-  header: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  card: { padding: spacing.md, gap: spacing.sm },
+  header: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   badge: {
     width: 44,
     height: 44,
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   title: { fontFamily: fontFamily.extrabold, fontSize: 20, color: colors.textPrimary },
   headerRight: { alignItems: 'flex-end', gap: spacing.xs },
   divider: { height: 1, backgroundColor: colors.border },
-  stats: { flexDirection: 'row', gap: spacing.md },
+  stats: { flexDirection: 'row', gap: spacing.sm },
   stat: { flex: 1, gap: spacing.xs },
   statValue: { fontFamily: fontFamily.extrabold, fontSize: 22, color: colors.textPrimary },
   details: {

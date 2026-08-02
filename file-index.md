@@ -10,7 +10,12 @@
 - `app.json` — config Expo (nom « RÉCA Opérateur », portrait, thème sombre, `scheme`,
   ids `ca.groupereca.recaoperateur`, icônes, plugins dont `@rnmapbox/maps` depuis Sprint 005-006 —
   le jeton de téléchargement natif n'y figure **pas**, lu directement par Gradle via
-  `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`, voir `.env.example`).
+  `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`, voir `.env.example`) et `./plugins/withGradleJdk17` (2026-08-02).
+- `plugins/withGradleJdk17.js` (2026-08-02) — plugin de config Expo, réécrit
+  `android/gradle.properties`/`gradle-daemon-jvm.properties` à chaque `expo prebuild` pour forcer
+  Gradle à utiliser le JDK 17 de `JAVA_HOME` (contourne un bug AGP/Prefab avec JDK 22+, voir
+  `memory.md`). Nécessaire car `android/` est gitignored/regénéré — pas un fichier à éditer à la
+  main sur chaque machine.
 - `.env.example` (Sprint 005-006) — `EXPO_PUBLIC_MAPBOX_TOKEN` (public, runtime) +
   `RNMAPBOX_MAPS_DOWNLOAD_TOKEN` (secret, build natif uniquement). `.env.local` gitignored.
 - `tsconfig.json` — TS strict + flags (`docs/10`), `types: [jest, react]`, alias `@/* → src/*`.

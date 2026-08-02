@@ -11,6 +11,7 @@ module.exports = [
       'android/*',
       'ios/*',
       'scripts/*',
+      'plugins/*',
       '.input/**',
       '*.config.cjs',
     ],

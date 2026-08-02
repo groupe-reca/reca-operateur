@@ -154,9 +154,9 @@ function AlertsRow({ alerts }: { alerts: MissionScreenState['alerts'] }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  topSection: { gap: spacing.md, paddingBottom: spacing.md },
+  topSection: { gap: spacing.sm, paddingBottom: spacing.sm },
   alertsRow: { gap: spacing.sm },
-  mapArea: { flex: 1 },
+  mapArea: { flex: 1, minHeight: 220, overflow: 'hidden' },
   leftColumn: { position: 'absolute', gap: spacing.md, width: 220 },
   rightColumn: { position: 'absolute', alignItems: 'flex-end', gap: spacing.md },
   mapControls: { gap: spacing.sm },

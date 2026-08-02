@@ -37,30 +37,38 @@ export function MissionScreenPreview() {
 
   return (
     <View style={styles.root}>
-      <MissionScreen state={current.state} />
-      <View style={styles.switcher}>
-        {VARIANTS.map((variant, index) => (
-          <PressableScale
-            key={variant.key}
-            onPress={() => setSelected(index)}
-            style={[styles.chip, index === selected ? styles.chipActive : null]}
-            accessibilityRole="button"
-            accessibilityLabel={`Aperçu ${variant.label}`}
-          >
-            <Txt variant="meta" color={index === selected ? colors.bg : colors.textPrimary}>
-              {variant.label}
-            </Txt>
-          </PressableScale>
-        ))}
-      </View>
-      {/* Sprint 007-008 proof of persistence — dev-only, additive, does not
-          feed MissionScreen itself (see memory.md scope decision). */}
-      <View style={styles.debugBanner}>
-        <Txt variant="meta" color={colors.textSecondary}>
+      {/* Dev-only toolbar as a real flex row (not an absolute overlay): a
+          fixed pixel offset here previously collided with the real bottom
+          UI (CurrentResidenceSheet + BottomTabBar) on a real phone, since
+          that section's actual height varies by device (see memory.md).
+          Taking real layout space instead guarantees no overlap on any
+          screen size. */}
+      <View style={styles.devToolbar}>
+        <View style={styles.switcher}>
+          {VARIANTS.map((variant, index) => (
+            <PressableScale
+              key={variant.key}
+              onPress={() => setSelected(index)}
+              style={[styles.chip, index === selected ? styles.chipActive : null]}
+              accessibilityRole="button"
+              accessibilityLabel={`Aperçu ${variant.label}`}
+            >
+              <Txt variant="meta" color={index === selected ? colors.bg : colors.textPrimary}>
+                {variant.label}
+              </Txt>
+            </PressableScale>
+          ))}
+        </View>
+        {/* Sprint 007-008 proof of persistence — dev-only, additive, does not
+            feed MissionScreen itself (see memory.md scope decision). */}
+        <Txt variant="meta" color={colors.textSecondary} numberOfLines={1}>
           {loading
             ? 'SQLite : chargement…'
             : `SQLite : session ${session ? formatTime(session.openedAt) : '—'} · ${mission ? '1 mission' : '0 mission'} · ${itemCount} résidences`}
         </Txt>
+      </View>
+      <View style={styles.screen}>
+        <MissionScreen state={current.state} />
       </View>
     </View>
   );
@@ -73,18 +81,22 @@ function formatTime(isoDate: string): string {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  switcher: {
-    position: 'absolute',
-    bottom: 118,
-    alignSelf: 'center',
+  devToolbar: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    borderWidth: 1,
+    borderBottomWidth: 1,
     borderStyle: 'dashed',
     borderColor: colors.warning,
-    borderRadius: radii.pill,
-    padding: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  screen: { flex: 1 },
+  switcher: {
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   chip: {
     paddingVertical: spacing.xs,
@@ -92,13 +104,4 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
   },
   chipActive: { backgroundColor: colors.warning },
-  debugBanner: {
-    position: 'absolute',
-    bottom: 76,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: radii.pill,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm + 2,
-  },
 });

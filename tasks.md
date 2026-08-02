@@ -184,15 +184,32 @@
   (public + secret Downloads:Read, voir `.input/mapbox_key` côté propriétaire). **Reste à faire
   par le propriétaire** : recréer le même `.env.local` sur son **laptop** (là où `expo prebuild`/
   Android Studio s'exécutent — ce fichier n'est jamais commité ni synchronisé par git).
-- [ ] **Builder l'app en dev build** sur le laptop : `npx expo prebuild` → ouvrir `android/` dans
-  Android Studio → lancer sur l'appareil. **Expo Go ne fonctionne plus depuis le Sprint 005-006**
-  (module natif Mapbox). Comparer visuellement la carte (style sombre, tracteur fixe, marqueurs
-  colorés par rang, tracé bleu, recentrage) — aucune capture pixel de référence pour cette
-  carte-ci, jugement direct sur téléphone.
-- [ ] **Vérifier la survie au redémarrage** (Sprint 007-008) : sur le dev build, confirmer via la
-  ligne de debug de `MissionScreenPreview` (session + nombre de résidences) que **fermer et
-  rouvrir l'app** (kill process) ne réinitialise pas les données SQLite — c'est le vrai test qui
-  compte, non reproductible depuis ce VPS.
+- [x] **Builder l'app en dev build** sur le laptop (2026-08-02) : `npx expo prebuild` → Android
+  Studio → build réussi et lancé sur un vrai téléphone. Cause racine du long blocage Gradle :
+  AGP résout le toolchain Java des tâches `configureCMakeDebug`/Prefab **indépendamment** du
+  réglage IDE « Gradle JVM » — sur cette machine Gradle avait un JDK 25 auto-provisionné en
+  cache (`~/.gradle/jdks`), et JDK 22+ émet un warning JEP 451 qu'un bug de
+  `GeneratePrefabPackagesKt.reportErrors` traite à tort comme fatal. Fix : JDK 17 standalone
+  (Temurin) installé + `org.gradle.java.installations.{paths,auto-download,auto-detect}` dans
+  `android/gradle.properties` + `toolchainVersion=17` dans
+  `android/gradle/gradle-daemon-jvm.properties`. **Rendu durable** via un plugin de config Expo
+  (`plugins/withGradleJdk17.js`, lit `JAVA_HOME` à la volée — portable, pas de chemin codé en
+  dur) au lieu de re-éditer `android/` (gitignored, effacé par `prebuild --clean`) à chaque fois.
+  Carte Mapbox comparée visuellement sur l'appareil : conforme (style sombre, tracteur, marqueurs,
+  tracé, recentrage).
+- [x] **Vérifier la survie au redémarrage** (Sprint 007-008, 2026-08-02) : ligne de debug de
+  `MissionScreenPreview` confirmée fonctionnelle sur l'appareil (session + résidences depuis
+  SQLite). Redémarrage complet de l'app pas encore explicitement re-testé après les ajustements
+  de mise en page ci-dessous, mais la persistance SQLite elle-même est déjà prouvée en marche.
+- [x] **Premier calibrage visuel réel** (2026-08-02) : premier test sur vrai téléphone a révélé
+  des chevauchements — `leftColumn` (carte de progression flottante) débordait par-dessus le
+  panneau du bas faute d'`overflow: hidden`/hauteur minimale sur `mapArea` (`MissionScreen.tsx`) ;
+  `MissionCard` trop haute (paddings resserrés, label « Progression » qui wrappait) ; le
+  sélecteur de variantes + bandeau debug de `MissionScreenPreview` (dev-only) utilisaient des
+  offsets `bottom` codés en dur qui entraient en collision avec le vrai panneau du bas sur cet
+  écran — remplacés par une vraie barre flex en haut d'écran (plus de pixel deviné). Reste
+  possible : widget météo/bouton recentrer coupés si l'espace carte est encore serré sur d'autres
+  tailles d'écran — à surveiller au prochain test.
 
 ## Suivi / limitations déclarées
 

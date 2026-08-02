@@ -391,6 +391,30 @@
   rôle `operateur`, RLS et chaîne de résolution de l'opérateur : **à (re)vérifier dans `reca-app`
   au moment de la Phase 08** (ne pas présumer depuis le prototype `reca-operator`).
 
+## Premier build device réel (2026-08-02)
+
+- **Piège Gradle/AGP (Windows)** : les tâches `configureCMakeDebug[*]`/Prefab résolvent leur
+  propre toolchain Java **indépendamment** du réglage IDE « Gradle JVM » (qui ne contrôle que le
+  *daemon*). Si Gradle a un JDK 22+ auto-provisionné en cache (`~/.gradle/jdks`), il peut être
+  choisi pour Prefab même si l'IDE est réglé sur 17 — un bug d'AGP
+  (`GeneratePrefabPackagesKt.reportErrors`) traite alors le warning JEP 451 ("restricted method")
+  comme une erreur fatale, faisant échouer le build avec un message qui ne mentionne aucune
+  version de JDK. **Fix permanent** : `plugins/withGradleJdk17.js` (plugin de config Expo) écrit
+  `org.gradle.java.installations.{paths,auto-download,auto-detect}` (lu depuis `JAVA_HOME` de la
+  machine, jamais codé en dur) dans `android/gradle.properties` + `toolchainVersion=17` dans
+  `android/gradle/gradle-daemon-jvm.properties` à chaque `expo prebuild` — nécessaire car
+  `android/` est gitignored et regénéré à chaque fois. **Prérequis machine** : un JDK 17
+  standalone doit être installé (ex. Eclipse Temurin) avec `JAVA_HOME` configuré — le plugin ne
+  télécharge rien, il ne fait que pointer Gradle vers ce qui existe déjà.
+- **Premier test visuel réel a révélé des pièges de mise en page** (jamais vus en aperçu/mock) :
+  du contenu en `position: absolute` peut déborder silencieusement de son parent si celui-ci n'a
+  pas `overflow: hidden` — sur un vrai écran, la hauteur réellement disponible peut être bien plus
+  petite que celle supposée en développement. Et des offsets `bottom`/`top` codés en dur pour des
+  overlays (ex. l'ancien sélecteur de dev de `MissionScreenPreview`) sont fragiles dès que le
+  contenu réel en dessous change de hauteur d'un appareil à l'autre — préférer un vrai élément
+  flex (qui prend sa place dans le flux) à un overlay absolument positionné deviné au pixel près,
+  chaque fois que c'est possible.
+
 ## Contrainte de vérification (ce VPS)
 
 - Le VPS **n'a ni GUI ni émulateur** : ici on garantit seulement **compile + types + lint +

@@ -30,7 +30,8 @@
       "expo-splash-screen",
       "expo-asset",
       "@rnmapbox/maps",
-      "expo-sqlite"
+      "expo-sqlite",
+      "./plugins/withGradleJdk17"
     ]
   }
 }
