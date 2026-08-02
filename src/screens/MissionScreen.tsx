@@ -1,5 +1,5 @@
 import { CloudSnow, Crosshair, Layers, Minus, Plus } from 'lucide-react-native';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -39,6 +39,16 @@ export function MissionScreen({ state }: Props) {
   const mapRef = useRef<MissionMapViewHandle>(null);
   const handleRecenter = () => mapRef.current?.recenter();
 
+  // Offline/alert banners are additive overlays (docs/02 "Map First": the map
+  // is the app, everything else floats above it) — they must not push the
+  // map's flow height down like MissionCard does, or a demo combining both
+  // (see missionScreenMocks.ts IN_PROGRESS_MOCK) collapses the map to a
+  // sliver on a short device. Measured (not guessed) so it adapts to however
+  // many alerts/pills are actually rendered.
+  const [topOverlayHeight, setTopOverlayHeight] = useState(0);
+  const hasTopOverlay = Boolean(state.offline) || state.alerts.length > 0;
+  const columnsTop = hasTopOverlay ? spacing.sm + topOverlayHeight + spacing.sm : spacing.lg;
+
   return (
     <View style={styles.root}>
       <View
@@ -59,8 +69,6 @@ export function MissionScreen({ state }: Props) {
           etaLabel={state.mission.totalEtaLabel}
           onDetails={() => {}}
         />
-        {state.offline ? <OfflineIndicator pendingChanges={state.offline.pendingOperations} /> : null}
-        <AlertsRow alerts={state.alerts} />
       </View>
 
       <View style={styles.mapArea}>
@@ -72,7 +80,17 @@ export function MissionScreen({ state }: Props) {
           activeState={state.activeState}
         />
 
-        <View style={[styles.leftColumn, { left: insets.left + screenMargin, top: spacing.lg }]}>
+        {hasTopOverlay ? (
+          <View
+            style={[styles.topOverlay, { left: insets.left + screenMargin, right: insets.right + screenMargin, top: spacing.sm }]}
+            onLayout={(e) => setTopOverlayHeight(e.nativeEvent.layout.height)}
+          >
+            {state.offline ? <OfflineIndicator pendingChanges={state.offline.pendingOperations} /> : null}
+            <AlertsRow alerts={state.alerts} />
+          </View>
+        ) : null}
+
+        <View style={[styles.leftColumn, { left: insets.left + screenMargin, top: columnsTop }]}>
           {state.activeState === 'PROBLEM' && state.problem ? (
             <ProblemStateCard
               address={state.address}
@@ -104,7 +122,7 @@ export function MissionScreen({ state }: Props) {
           </GlassCard>
         </View>
 
-        <View style={[styles.rightColumn, { right: insets.right + screenMargin, top: spacing.lg }]}>
+        <View style={[styles.rightColumn, { right: insets.right + screenMargin, top: columnsTop }]}>
           <View style={styles.mapControls}>
             <FloatingActionButton icon={Crosshair} size={44} onPress={handleRecenter} accessibilityLabel="Recentrer" />
             <FloatingActionButton icon={Layers} size={44} onPress={() => {}} accessibilityLabel="Couches" />
@@ -157,13 +175,16 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   topSection: { gap: spacing.xs, paddingBottom: spacing.xs },
   alertsRow: { gap: spacing.sm },
-  // Small floor only — a real minHeight of 220+ can force the map taller
-  // than the remaining budget on a short/narrow phone once the top block
-  // grows (offline banner + alert, both optional additive overlays), which
-  // pushed the bottom sheet + tab bar off the bottom of the screen entirely
-  // (see memory.md, first real-device calibration pass). Letting flex:1
-  // shrink further keeps the bottom nav always reachable.
+  // topSection is now a fixed-height block (header + MissionCard only) —
+  // offline/alert overlays no longer live in its flow (see topOverlay), so
+  // the map reliably keeps the bulk of the screen like mock-encours.png.
+  // Small floor only: a higher minHeight can still force mapArea taller than
+  // the space actually left by topSection + bottomSection on a short/narrow
+  // device, pushing the bottom sheet + tab bar off-screen again (see
+  // memory.md, first real-device calibration pass) — flex:1 already grows
+  // to fill the remaining space on its own.
   mapArea: { flex: 1, minHeight: 60, overflow: 'hidden' },
+  topOverlay: { position: 'absolute', gap: spacing.sm },
   leftColumn: { position: 'absolute', gap: spacing.sm, width: 220 },
   rightColumn: { position: 'absolute', alignItems: 'flex-end', gap: spacing.md },
   mapControls: { gap: spacing.sm },

@@ -233,6 +233,21 @@
   bouton Signaler + FAB/météo coupés proprement par `overflow:hidden`, sans chevauchement cassé) —
   vérifié que les 3 autres variantes (sans cette combinaison) s'affichent, elles, intégralement.
   Vérifié : `tsc`/`eslint` propres, `jest` 27/27 verts.
+- [x] **Troisième calibrage — correction du diagnostic EN COURS** (2026-08-02) : l'utilisateur a
+  recomparé au rendu réel et signalé que ça ne ressemblait pas à `mock-encours.png` — à raison :
+  le constat « limite de densité connue » de la passe précédente sous-estimait le problème.
+  Cause racine réelle : `OfflineIndicator`/`AlertsRow` vivaient en flux normal dans `topSection`
+  au lieu de flotter au-dessus de la carte (violation de l'invariant Map First), donc pour EN
+  COURS (seule variante à combiner les deux, démo Sprint 004) ils écrasaient `mapArea` à une
+  bande quasi vide, avec en plus un chevauchement de texte illisible entre la bannière et
+  `CurrentResidenceProgressCard`. **Fix** : bannières déplacées en overlay `position:absolute`
+  dans `mapArea` (hauteur mesurée par `onLayout`, pas de valeur magique) décalant
+  `leftColumn`/`rightColumn` juste en dessous ; `mapArea.minHeight` remis à `60` (un `220` recrée
+  le bug de débordement hors écran du tout premier calibrage). Vérifié sur device : plus de
+  chevauchement, barre d'onglets toujours visible sur les 4 variantes. La limite résiduelle
+  (repères 4/5, bouton Signaler, météo, zoom coupés pour EN COURS+hors-ligne+alerte) est
+  désormais propre (juste `overflow:hidden`, sans superposition cassée) — détail dans
+  `memory.md`. `tsc`/`eslint`/`jest` (27/27) verts.
 
 ## Suivi / limitations déclarées
 

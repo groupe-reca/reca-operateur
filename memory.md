@@ -482,6 +482,41 @@
   → nécessite `export MSYS_NO_PATHCONV=1` **dans le même appel** (les variables d'environnement
   ne survivent pas entre deux invocations d'outil Bash séparées ici).
 
+## Troisième calibrage réel — correction du diagnostic EN COURS (2026-08-02)
+
+- **Le constat « limite de densité connue » ci-dessus était incomplet** : l'utilisateur a
+  recomparé lui-même le rendu à `mock-encours.png` et a eu raison de douter. Le vrai problème
+  n'était pas juste « quelques éléments coupés en bas » — `OfflineIndicator` + `AlertsRow`
+  vivaient **dans le flux normal** de `topSection` (avant ce fix), donc pour la variante EN COURS
+  (seule à combiner les deux, démo Sprint 004) ils gonflaient `topSection` au point de réduire
+  `mapArea` à une **simple bande quasi vide** (carte, tracteur, checklist, météo, FAB Recentrer,
+  panneau de tâches — tout quasi invisible), très loin de `mock-encours.png`.
+- **Cause racine** : violation de l'invariant « Map First : le reste flotte au-dessus »
+  (`CLAUDE.md`/docs/02) — `OfflineIndicator`/`AlertsRow` n'étaient pas des overlays flottants
+  mais des blocs empilés en flux, donc ils volaient de la hauteur à la carte au lieu de se
+  superposer dessus.
+- **Fix (`MissionScreen.tsx`)** : `OfflineIndicator`/`AlertsRow` déplacés hors de `topSection`,
+  rendus en `position: 'absolute'` **à l'intérieur de `mapArea`** (nouveau style `topOverlay`),
+  donc ils flottent au-dessus de la carte sans jamais agrandir `topSection`. Leur hauteur réelle
+  est **mesurée** via `onLayout` (pas de valeur magique) et sert à décaler `leftColumn`/
+  `rightColumn` (`columnsTop`) juste sous la bannière — sans ce décalage mesuré, la
+  `CurrentResidenceProgressCard` démarre au même niveau que la bannière et son fond translucide
+  laisse les deux textes se superposer illisiblement (repro observée avant fix).
+  `mapArea.minHeight` remis à `60` (pas `220`) : un plancher plus haut que l'espace réellement
+  laissé par `topSection`+`bottomSection` recrée exactement le bug du tout premier calibrage
+  (dépassement hors écran, barre d'onglets poussée hors champ) — `flex: 1` suffit seul à occuper
+  l'espace disponible, `minHeight` n'est qu'un filet de sécurité bas.
+- **Résultat vérifié sur device (TECNO KL4, 360×800dp)** : plus de chevauchement de texte, barre
+  d'onglets du bas toujours entièrement visible sur les 4 variantes (EN ROUTE/EN APPROCHE/EN
+  COURS/PROBLÈME). La variante EN COURS + démo hors-ligne + alerte garde un espace carte plus
+  réduit que les autres (repères 4/5, bouton « Signaler un problème », widget météo, contrôles
+  zoom restent coupés par `overflow:hidden`) — mais **proprement**, sans chevauchement ni
+  clipping de la navigation, contrairement à l'état trouvé en début de cette passe. Cette
+  contrainte résiduelle reste liée au budget vertical réel de ce device combiné à cette démo
+  précise (mock-encours.png ne montre pas ce cas hors-ligne+alerte simultané) — pas un bug de
+  layout à retenter en boucle.
+- `tsc --noEmit`, `eslint .`, `jest` (27/27, 4 suites) : tous verts après ce fix.
+
 ## Contrainte de vérification (ce VPS) — corrigée (2026-08-02)
 
 - **Ancienne hypothèse invalidée** : ce dépôt tourne en réalité sur une **machine Windows** (pas
