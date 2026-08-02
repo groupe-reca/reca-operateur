@@ -1,11 +1,10 @@
 import { TriangleAlert } from 'lucide-react-native';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { colors, radii, spacing } from '@/config/theme';
 
 import { GlassCard } from '../ui/GlassCard';
 import { Icon } from '../ui/Icon';
-import { PressableScale } from '../ui/PressableScale';
 import { Txt } from '../ui/Txt';
 import { PhaseTimer } from './PhaseTimer';
 
@@ -18,15 +17,31 @@ type Props = {
   frozenSeconds: number;
   onNext?: () => void;
   onResumeLater?: () => void;
+  // Refonte 2026-08-02 (.input/PLAN-ECRANS-OPERATEUR-RECA.md, "Fusion
+  // Problème/Résidence") : remplace `CurrentResidenceSheet` comme contenu du
+  // `BottomSheet` gestuel en état PROBLEM — plus de colonne flottante étroite
+  // (220px) où les 2 boutons d'action débordaient sur petit écran (voir
+  // memory.md, suivi ouvert du 2026-08-02) ; le sheet plein-bord règle ce
+  // problème de facto. `bare` saute le `GlassCard` propre (même convention
+  // que `CurrentResidenceSheet`).
+  bare?: boolean;
 };
 
-// Floating left column for the PROBLEM state. Structurally different from
-// CurrentResidenceProgressCard (no phase checklist) per docs/11 Phase 03:
-// problem type, residence, note, and the two manual actions docs/09 allows
-// ("passage à la suivante" vs. a later explicit resume — never automatic).
-export function ProblemStateCard({ address, problemType, note, frozenSeconds, onNext, onResumeLater }: Props) {
-  return (
-    <GlassCard level="panel" radius="lg" style={styles.card}>
+// Structurally different from CurrentResidenceProgressCard (no phase
+// checklist) per docs/11 Phase 03: problem type, residence, note, and the
+// two manual actions docs/09 allows ("passage à la suivante" vs. a later
+// explicit resume — never automatic).
+export function ProblemStateCard({
+  address,
+  problemType,
+  note,
+  frozenSeconds,
+  onNext,
+  onResumeLater,
+  bare = false,
+}: Props) {
+  const content = (
+    <>
       <View style={styles.header}>
         <Icon icon={TriangleAlert} color={colors.danger} size={18} />
         <Txt variant="labelCaps" color={colors.danger}>
@@ -49,8 +64,16 @@ export function ProblemStateCard({ address, problemType, note, frozenSeconds, on
       <PhaseTimer label="Temps figé" seconds={frozenSeconds} color={colors.danger} />
 
       <View style={styles.actions}>
+        {/* Pressable brut (pas PressableScale) : un Txt en enfant direct du
+            Animated.View (API `Animated` classique) de PressableScale ne
+            peint pas quand cet ancêtre est lui-même imbriqué dans
+            l'Animated.View piloté par Reanimated de BottomSheet (bug de
+            rendu confirmé sur device, texte absent bien que présent dans
+            l'arbre — voir memory.md). Partout ailleurs le label est un
+            frère de PressableScale (FloatingActionButton, VoiceButton),
+            jamais un enfant — seul ce composant l'avait en enfant direct. */}
         {onResumeLater ? (
-          <PressableScale
+          <Pressable
             onPress={onResumeLater}
             style={styles.actionButton}
             accessibilityRole="button"
@@ -59,10 +82,10 @@ export function ProblemStateCard({ address, problemType, note, frozenSeconds, on
             <Txt variant="body" color={colors.textPrimary}>
               Reprendre plus tard
             </Txt>
-          </PressableScale>
+          </Pressable>
         ) : null}
         {onNext ? (
-          <PressableScale
+          <Pressable
             onPress={onNext}
             style={[styles.actionButton, styles.actionPrimary]}
             accessibilityRole="button"
@@ -71,9 +94,19 @@ export function ProblemStateCard({ address, problemType, note, frozenSeconds, on
             <Txt variant="body" color={colors.textPrimary}>
               Passer à la suivante
             </Txt>
-          </PressableScale>
+          </Pressable>
         ) : null}
       </View>
+    </>
+  );
+
+  if (bare) {
+    return <View style={styles.card}>{content}</View>;
+  }
+
+  return (
+    <GlassCard level="panel" radius="lg" style={styles.card}>
+      {content}
     </GlassCard>
   );
 }

@@ -12,11 +12,15 @@ type Props = {
   active?: boolean;
   onPress?: () => void;
   size?: number;
+  // Undefined/omitted = icon-only (refonte 2026-08-02: floats standalone
+  // over the map, a visible label would collide with whatever sits below —
+  // see MissionScreen.tsx). Only BottomTabBar's usage still passes one,
+  // where the label sits inside the bar's own background.
   label?: string;
 };
 
 // Central voice/announcement FAB. Keeps the same function in every state.
-export function VoiceButton({ active = true, onPress, size = 64, label = 'Annonce' }: Props) {
+export function VoiceButton({ active = true, onPress, size = 64, label }: Props) {
   return (
     <View style={styles.wrap}>
       <PressableScale
@@ -38,9 +42,11 @@ export function VoiceButton({ active = true, onPress, size = 64, label = 'Annonc
           <Icon icon={active ? Mic : MicOff} color={colors.textPrimary} size={Math.round(size * 0.4)} />
         </View>
       </PressableScale>
-      <Txt variant="meta" color={colors.textSecondary}>
-        {label}
-      </Txt>
+      {label ? (
+        <Txt variant="meta" color={colors.textSecondary}>
+          {label}
+        </Txt>
+      ) : null}
     </View>
   );
 }

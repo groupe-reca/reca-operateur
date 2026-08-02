@@ -29,9 +29,12 @@
     "lucide-react-native": "^1.28.0",
     "react": "19.2.3",
     "react-native": "0.86.2",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-svg": "15.15.4",
-    "react-native-url-polyfill": "^4.0.0"
+    "react-native-url-polyfill": "^4.0.0",
+    "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
     "@testing-library/react-native": "13.3.3",
@@ -49,7 +52,8 @@
   "jest": {
     "preset": "jest-expo",
     "setupFiles": [
-      "<rootDir>/tests/setupSupabaseEnv.js"
+      "<rootDir>/tests/setupSupabaseEnv.js",
+      "<rootDir>/node_modules/react-native-gesture-handler/jestSetup.js"
     ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1",
@@ -57,7 +61,8 @@
       "^lucide-react-native$": "<rootDir>/tests/__mocks__/lucideMock.js",
       "^@rnmapbox/maps$": "<rootDir>/tests/__mocks__/rnmapboxMock.js",
       "^expo-crypto$": "<rootDir>/tests/__mocks__/expoCryptoMock.js",
-      "^@react-native-async-storage/async-storage$": "<rootDir>/node_modules/@react-native-async-storage/async-storage/jest/async-storage-mock.js"
+      "^@react-native-async-storage/async-storage$": "<rootDir>/node_modules/@react-native-async-storage/async-storage/jest/async-storage-mock.js",
+      "^react-native-worklets$": "<rootDir>/node_modules/react-native-worklets/src/mock.ts"
     },
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/.*|native-base|react-native-svg|lucide-react-native))"

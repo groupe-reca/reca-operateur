@@ -102,7 +102,6 @@ describe('MissionScreen', () => {
     expect(getByText('Mission 24-01-15')).toBeTruthy();
     expect(getAllByText('224', { exact: false }).length).toBeGreaterThan(0);
     expect(getByText('Déneigement')).toBeTruthy();
-    expect(getByText('Carte')).toBeTruthy();
     expect(getByText('Hors ligne · 3 en attente')).toBeTruthy();
   });
 

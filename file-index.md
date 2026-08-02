@@ -10,19 +10,28 @@
 - `app.json` — config Expo (nom « RÉCA Opérateur », portrait, thème sombre, `scheme`,
   ids `ca.groupereca.recaoperateur`, icônes, plugins dont `@rnmapbox/maps` depuis Sprint 005-006 —
   le jeton de téléchargement natif n'y figure **pas**, lu directement par Gradle via
-  `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`, voir `.env.example`) et `./plugins/withGradleJdk17` (2026-08-02).
+  `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`, voir `.env.example`), `./plugins/withGradleJdk17` (2026-08-02),
+  `./plugins/withDevSingleAbi` (2026-08-02).
 - `plugins/withGradleJdk17.js` (2026-08-02) — plugin de config Expo, réécrit
   `android/gradle.properties`/`gradle-daemon-jvm.properties` à chaque `expo prebuild` pour forcer
   Gradle à utiliser le JDK 17 de `JAVA_HOME` (contourne un bug AGP/Prefab avec JDK 22+, voir
   `memory.md`). Nécessaire car `android/` est gitignored/regénéré — pas un fichier à éditer à la
   main sur chaque machine.
-- `.env.example` (Sprint 005-006) — `EXPO_PUBLIC_MAPBOX_TOKEN` (public, runtime) +
-  `RNMAPBOX_MAPS_DOWNLOAD_TOKEN` (secret, build natif uniquement). `.env.local` gitignored.
+- `plugins/withDevSingleAbi.js` (2026-08-02) — **dev-only**, restreint
+  `reactNativeArchitectures` à `arm64-v8a` (seul ABI du TECNO KL4 de test) : un build 4-ABI de
+  `react-native-reanimated`/`gesture-handler`/`worklets` dépassait la limite de 10 min de
+  l'outillage de build utilisé ici. **À retirer/conditionner avant un vrai build multi-appareils
+  ou de distribution** (voir `memory.md`).
+- `.env.example` — `EXPO_PUBLIC_MAPBOX_TOKEN`/`RNMAPBOX_MAPS_DOWNLOAD_TOKEN` (Sprint 005-006) +
+  `EXPO_PUBLIC_SUPABASE_URL`/`EXPO_PUBLIC_SUPABASE_ANON_KEY` (2026-08-02, même projet que
+  `reca-app`). `.env.local` gitignored.
 - `tsconfig.json` — TS strict + flags (`docs/10`), `types: [jest, react]`, alias `@/* → src/*`.
-- `babel.config.js` — preset `babel-preset-expo` (requis par le transform jest).
+- `babel.config.js` — preset `babel-preset-expo` + `react-native-reanimated/plugin` (2026-08-02,
+  doit rester le dernier plugin listé).
 - `eslint.config.js` — flat config `eslint-config-expo` (+ ignores `.input`, natifs, config cjs).
 - `index.ts` — enregistre le composant racine (`registerRootComponent(App)`).
-- `App.tsx` — charge les polices Manrope (`useAppFonts`) puis, dans `SafeAreaProvider` +
+- `App.tsx` — charge les polices Manrope (`useAppFonts`) puis, dans `GestureHandlerRootView`
+  (2026-08-02, requis par `react-native-gesture-handler`) → `SafeAreaProvider` +
   `AuthProvider`, un `AuthGate` interne : non authentifié → `LoginScreen`, sinon
   `MissionProvider` (Sprint 007-008 — SQLite/`MissionContext`, `employeeId` passé depuis
   `useAuth()`) → `MissionScreenPreview` (temporaire, comme avant). `ComponentGalleryScreen` reste
@@ -72,17 +81,28 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   - `ui/` — primitives : `Txt`, `GlassCard`, `PressableScale`, `Icon`, `ProgressBar`,
     `StatusDot`, `Pill`, `NotificationBadge` (Sprint 003, factorisé depuis `AppHeader`).
   - `brand/` — `OfficialLogo` (SVG officiel), `Wordmark` (texte « OPÉRATEUR »).
-  - `mission/` — `AppHeader`, `MissionCard` (+ `etaLabel`, bouton « Détails » bordé — corrigé
-    Sprint 003), `MissionCardCompact`, `PhaseTimer` (+ `formatDuration` et
-    `formatElapsedWithHours` purs, testés), `AlertCard`, `SystemStatus`, `OfflineIndicator`,
-    `SyncIndicator`, `CurrentResidenceSheet`, `UpcomingResidenceRow`, `FixedTractor`,
+  - `mission/` — `AppHeader` (refonte 2026-08-02 : hamburger/logo+OPÉRATEUR/sync/cloche restaurés,
+    props `onMenu/onAlerts/alertsCount/syncState`, annule la simplification "logo seul" du même
+    jour), `MissionCard` (pleine, plus utilisée par `MissionScreen` depuis la refonte — gardée
+    pour `ComponentGalleryScreen`), `MissionCardCompact` (réécrite 2026-08-02 selon
+    `.input/PLAN-ECRANS-OPERATEUR-RECA.md` : titre+Détails/secteur/ligne résidences+%+état·chrono
+    + barre 3px — remplace `MissionCard` dans `MissionScreen`), `PhaseTimer` (+ `formatDuration`
+    et `formatElapsedWithHours` purs, testés), `AlertCard`, `SystemStatus`, `OfflineIndicator`,
+    `SyncIndicator` (exporte aussi `SYNC_STATE_META`, réutilisé par `AppHeader`),
+    `CurrentResidenceSheet` (prop `bare` 2026-08-02 : contenu nu sans `GlassCard` propre, pour
+    vivre dans `BottomSheet`), `UpcomingResidenceRow`, `FixedTractor`,
     `CurrentResidenceProgressCard` (colonne gauche ; Sprint 004 : `PhaseTimer` réel + prop
     `color` threadée au lieu de `colors.success` en dur), `ResidenceTasksCard` (panneau droit
-    tâches, seulement pour EN COURS), `ProblemStateCard` (Sprint 004, remplace
-    `CurrentResidenceProgressCard` au même emplacement pour l'état PROBLÈME).
-  - `controls/` — `FloatingActionButton`, `ProblemButton`, `VoiceButton`, `BottomSheet`
-    (coquille, gestes de glissement toujours différés — la maquette n'en montre pas le besoin),
-    `BottomTabBar` (Sprint 003 ; seuls Carte/Annonce fonctionnels, voir `memory.md`).
+    tâches, seulement pour EN COURS), `ProblemStateCard` (prop `bare` 2026-08-02, remplace
+    `CurrentResidenceSheet` comme contenu du `BottomSheet` en état PROBLÈME — plus de colonne
+    flottante étroite ; actions en `Pressable` brut, pas `PressableScale`, voir `memory.md`
+    pour le bug de rendu texte contourné).
+  - `controls/` — `FloatingActionButton`, `ProblemButton`, `VoiceButton` (label texte optionnel
+    depuis 2026-08-02 — flotte désormais seul, hors `BottomTabBar`), `BottomSheet` (**refondue
+    2026-08-02** : vrais gestes `react-native-gesture-handler`+`react-native-reanimated`, snap
+    25/50/75/100 réel, plein-bord), `BottomTabBar` (Sprint 003 ; **plus rendue par
+    `MissionScreen`** depuis la refonte 2026-08-02 — conservée pour `ComponentGalleryScreen`,
+    seuls Carte/Annonce fonctionnels, voir `memory.md`).
   - `map/` — **carte réelle Mapbox** (Sprint 005-006, remplace `SimulatedMapBackground`
     supprimé) : `MissionMapView.tsx` (MapView + Camera + style `dark-v11`, expose `recenter()`
     via ref), `TractorMarker.tsx` (overlay écran fixe, ancre HANDOFF 24 % du bas), `ResidenceMarkerLayer.tsx`
@@ -241,6 +261,10 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - `tests/setupSupabaseEnv.js` (2026-08-02, `jest.setupFiles`) — fournit des valeurs factices pour
   `EXPO_PUBLIC_SUPABASE_URL`/`ANON_KEY` sous Jest (l'auto-loading `.env.local` est un mécanisme
   `expo start`, pas du simple `jest`).
+- **Mocks Jest gesture-handler/reanimated (2026-08-02)** : `react-native-gesture-handler/
+  jestSetup.js` (`jest.setupFiles`) + `moduleNameMapper` `^react-native-worklets$` →
+  `react-native-worklets/src/mock.ts` (**pas** `react-native-reanimated/mock.js`, qui réimporte
+  l'entrée réelle et plante sous Jest — voir `memory.md`).
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)
@@ -252,6 +276,9 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - Visuel (Sprint 002) : `expo-font` + `expo-asset` (transitif) + `@expo-google-fonts/manrope`,
   `expo-blur`, `react-native-svg` (+ `-transformer` en dev), `expo-splash-screen`,
   `lucide-react-native`.
+- **Gestes/animations (2026-08-02)** : `react-native-gesture-handler` ~2.32,
+  `react-native-reanimated` 4.5.1 + peer requis `react-native-worklets` 0.10.1 (`expo-doctor` le
+  signale si absent). Build natif restreint à `arm64-v8a` en dev (`plugins/withDevSingleAbi.js`).
 - Layout (Sprint 003) : `react-native-safe-area-context`.
 - **Carte (Sprint 005-006)** : `@rnmapbox/maps` — **premier module natif du projet**, casse la
   compatibilité Expo Go. Nécessite 2 jetons distincts (voir `.env.example` + `memory.md`) : public

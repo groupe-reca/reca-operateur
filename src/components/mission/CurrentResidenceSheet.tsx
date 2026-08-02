@@ -15,6 +15,13 @@ type Props = {
   onNote?: () => void;
   onRoute?: () => void;
   onProblem?: () => void;
+  // Refonte 2026-08-02 (.input/PLAN-ECRANS-OPERATEUR-RECA.md) : quand ce
+  // composant devient le contenu de la position fermée du `BottomSheet`
+  // gestuel, ce dernier fournit déjà sa propre carte (glass + poignée) — un
+  // second `GlassCard` imbriqué doublerait le flou/la bordure. `bare` saute
+  // ce wrapper. Par défaut `false` : `ComponentGalleryScreen` continue de
+  // l'afficher en carte autonome, comme les autres entrées de la galerie.
+  bare?: boolean;
 };
 
 // "RÉSIDENCE ACTUELLE" panel: address + all 4 quick actions, including the
@@ -31,9 +38,10 @@ export function CurrentResidenceSheet({
   onNote,
   onRoute,
   onProblem,
+  bare = false,
 }: Props) {
-  return (
-    <GlassCard level="panel" radius="lg" style={styles.card}>
+  const content = (
+    <>
       <View style={styles.info}>
         <Txt variant="labelCaps" color={colors.success}>
           Résidence actuelle
@@ -55,6 +63,16 @@ export function CurrentResidenceSheet({
           onPress={onProblem}
         />
       </View>
+    </>
+  );
+
+  if (bare) {
+    return <View style={styles.card}>{content}</View>;
+  }
+
+  return (
+    <GlassCard level="panel" radius="lg" style={styles.card}>
+      {content}
     </GlassCard>
   );
 }

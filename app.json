@@ -31,7 +31,8 @@
       "expo-asset",
       "@rnmapbox/maps",
       "expo-sqlite",
-      "./plugins/withGradleJdk17"
+      "./plugins/withGradleJdk17",
+      "./plugins/withDevSingleAbi"
     ]
   }
 }

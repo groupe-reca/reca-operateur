@@ -33,7 +33,7 @@ export function BottomTabBar({ active, alertsCount = 0, voiceActive = true, onTa
       <TabItem tabKey="mission" icon={ClipboardList} label="Mission" active={active === 'mission'} onPress={onTabPress} />
 
       <View style={styles.voiceSlot}>
-        <VoiceButton active={voiceActive} onPress={onVoicePress} />
+        <VoiceButton active={voiceActive} onPress={onVoicePress} label="Annonce" />
       </View>
 
       <TabItem tabKey="alertes" icon={TriangleAlert} label="Alertes" active={active === 'alertes'} onPress={onTabPress} badge={alertsCount} />

@@ -3,12 +3,13 @@ import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomTabBar } from '@/components/controls/BottomTabBar';
+import { BottomSheet } from '@/components/controls/BottomSheet';
 import { FloatingActionButton } from '@/components/controls/FloatingActionButton';
+import { VoiceButton } from '@/components/controls/VoiceButton';
 import { AlertCard } from '@/components/mission/AlertCard';
 import { AppHeader } from '@/components/mission/AppHeader';
 import { CurrentResidenceSheet } from '@/components/mission/CurrentResidenceSheet';
-import { MissionCard } from '@/components/mission/MissionCard';
+import { MissionCardCompact } from '@/components/mission/MissionCardCompact';
 import { OfflineIndicator } from '@/components/mission/OfflineIndicator';
 import { ProblemStateCard } from '@/components/mission/ProblemStateCard';
 import { ResidenceTasksCard } from '@/components/mission/ResidenceTasksCard';
@@ -56,8 +57,8 @@ export function MissionScreen({ state }: Props) {
           { paddingTop: insets.top + spacing.sm, paddingLeft: insets.left + screenMargin, paddingRight: insets.right + screenMargin },
         ]}
       >
-        <AppHeader />
-        <MissionCard
+        <AppHeader onMenu={() => {}} onAlerts={() => {}} alertsCount={state.alerts.length} syncState={state.mission.syncState} />
+        <MissionCardCompact
           missionId={state.mission.missionId}
           secteur={state.mission.secteur}
           index={state.mission.index}
@@ -66,8 +67,6 @@ export function MissionScreen({ state }: Props) {
           phaseLabel={state.stateLabel}
           phaseSeconds={state.activeState === 'PROBLEM' ? (state.problem?.frozenSeconds ?? 0) : state.timerSeconds}
           phaseColor={state.color}
-          syncState={state.mission.syncState}
-          etaLabel={state.mission.totalEtaLabel}
           onDetails={() => {}}
         />
       </View>
@@ -88,26 +87,6 @@ export function MissionScreen({ state }: Props) {
           >
             {state.offline ? <OfflineIndicator pendingChanges={state.offline.pendingOperations} /> : null}
             <AlertsRow alerts={state.alerts} />
-          </View>
-        ) : null}
-
-        {/* The former CurrentResidenceProgressCard (état + chrono + adresse +
-            checklist) was removed — état/chrono now live in MissionCard's
-            third stat, and the address is already shown below in
-            CurrentResidenceSheet (2026-08-02 simplification, see memory.md).
-            ProblemStateCard is the only thing left here: problem-specific
-            info (type/note/frozen timer) not shown anywhere else. Nothing
-            floats on the left for the other 3 states. */}
-        {state.activeState === 'PROBLEM' && state.problem ? (
-          <View style={[styles.leftColumn, { left: insets.left + screenMargin, top: columnsTop }]}>
-            <ProblemStateCard
-              address={state.address}
-              problemType={state.problem.type}
-              note={state.problem.note}
-              frozenSeconds={state.problem.frozenSeconds}
-              onNext={() => {}}
-              onResumeLater={() => {}}
-            />
           </View>
         ) : null}
 
@@ -136,16 +115,44 @@ export function MissionScreen({ state }: Props) {
         </View>
       </View>
 
-      <View style={[styles.bottomSection, { paddingLeft: insets.left + screenMargin, paddingRight: insets.right + screenMargin }]}>
-        <CurrentResidenceSheet
-          address={state.address}
-          distanceLabel={state.residenceDistanceLabel}
-          etaLabel={state.residenceEtaLabel}
-          onProblem={() => {}}
-        />
-        <View style={{ paddingBottom: insets.bottom }}>
-          <BottomTabBar active="carte" alertsCount={2} voiceActive onVoicePress={() => {}} />
+      <View style={[styles.bottomSection, { paddingBottom: insets.bottom }]}>
+        {/* Retrait de BottomTabBar (2026-08-02, .input/PLAN-ECRANS-OPERATEUR-RECA.md) :
+            Mission/Alertes/Plus n'avaient déjà aucune destination réelle
+            (placeholders), leurs actions se redistribuent vers le header
+            (hamburger/cloche). Annonce devient un flottant indépendant,
+            centré à cheval sur la carte et la feuille résidence — même
+            décalage que l'ancien slot de BottomTabBar (marginTop:-28). */}
+        <View style={styles.voiceButtonFloating}>
+          <VoiceButton active onPress={() => {}} />
         </View>
+        {/* BottomSheet est maintenant gestuel (Phase 6 de la refonte) et
+            plein-bord (pas de screenMargin horizontal — un vrai bottom sheet
+            touche les bords de l'écran, contrairement à l'ancienne carte
+            flottante). `bare` évite un second GlassCard imbriqué : le sheet
+            fournit déjà sa propre carte/poignée. En PROBLEM, son contenu est
+            remplacé par ProblemStateCard (Phase 7 — fusion Problème/
+            Résidence, retire l'ancienne colonne flottante étroite). */}
+        <BottomSheet initialSnap={25}>
+          {state.activeState === 'PROBLEM' && state.problem ? (
+            <ProblemStateCard
+              address={state.address}
+              problemType={state.problem.type}
+              note={state.problem.note}
+              frozenSeconds={state.problem.frozenSeconds}
+              onNext={() => {}}
+              onResumeLater={() => {}}
+              bare
+            />
+          ) : (
+            <CurrentResidenceSheet
+              address={state.address}
+              distanceLabel={state.residenceDistanceLabel}
+              etaLabel={state.residenceEtaLabel}
+              onProblem={() => {}}
+              bare
+            />
+          )}
+        </BottomSheet>
       </View>
     </View>
   );
@@ -187,9 +194,9 @@ const styles = StyleSheet.create({
   // to fill the remaining space on its own.
   mapArea: { flex: 1, minHeight: 60, overflow: 'hidden' },
   topOverlay: { position: 'absolute', gap: spacing.sm },
-  leftColumn: { position: 'absolute', gap: spacing.sm, width: 220 },
   rightColumn: { position: 'absolute', alignItems: 'flex-end', gap: spacing.md },
   mapControls: { gap: spacing.sm },
   weatherPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md },
   bottomSection: { gap: spacing.sm },
+  voiceButtonFloating: { position: 'absolute', top: -28, alignSelf: 'center', zIndex: 10 },
 });

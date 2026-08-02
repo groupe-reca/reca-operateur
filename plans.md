@@ -10,6 +10,153 @@
 
 ## Archivé
 
+### ✅ Refonte visuelle des écrans opérateur — branche `PLAN-ECRANS-OPERATEUR-RECA` (2026-08-02)
+
+**Source** : `.input/PLAN-ECRANS-OPERATEUR-RECA.md` (spec du propriétaire). **Hors roadmap
+numérotée** (pas un sprint `docs/11`) — refonte de fidélité visuelle sur l'écran déjà livré
+(Sprints 002-004), comparable en nature aux passes de calibrage du 2026-08-02 mais bien plus
+large. Reprend/étend l'invariant Map First (`docs/02`) : carte plein écran sous le header, tout
+le reste flotte au-dessus.
+
+**Décisions prises avec le propriétaire avant de coder** :
+1. **Découpage en phases séquentielles**, une seule branche/PR, vérification device après
+   chaque phase (pas tout d'un coup).
+2. **`react-native-gesture-handler` + `react-native-reanimated` ajoutés maintenant** (nouveaux
+   modules natifs → nouveau `expo prebuild` + `gradlew installDebug`, ~10 min, même pattern que
+   `@react-native-async-storage/async-storage` cette semaine) — nécessaires pour le vrai
+   glissement du bottom sheet (25/50/75/100%), pas de solution de repli sans geste.
+3. **Le header revient à sa forme complète** (hamburger + logo + « OPÉRATEUR » + sync + cloche
+   d'alertes) — **annule explicitement** la simplification du 2026-08-02 (logo seul, décision
+   validée à l'époque). Nouvelle demande explicite du propriétaire, pas une régression à corriger
+   dans l'autre sens plus tard sans revalidation.
+
+**État actuel étudié avant de planifier** (via exploration du code, voir aussi `memory.md`) :
+- `MissionScreen.tsx` : 3 blocs empilés (topSection/mapArea/bottomSection), overlays absolus dans
+  `mapArea` (topOverlay mesuré par `onLayout`, leftColumn PROBLEM-only, rightColumn contrôles+météo).
+  `mapArea.minHeight:60` est un filet de sécurité **fragile** (voir passes de calibrage) — à ne
+  jamais remonter.
+- `AppHeader.tsx` actuel = logo seul, aucune prop. À réélargir (props `onMenu`/`onAlerts`/
+  `alertsCount`/`syncState`).
+- `MissionCard.tsx` (pleine, actuellement utilisée) vs `MissionCardCompact.tsx` (**existe déjà,
+  inutilisée** — ligne unique ~40px, props `missionId/index/total/progressPct` seulement, pas de
+  chip d'état/chrono) : à étendre avec `phaseLabel/phaseSeconds/phaseColor` pour matcher
+  `3/28   10%   EN ROUTE · 04:37` du spec.
+- `CurrentResidenceSheet.tsx` : contenu fixe (pas de geste) rendu directement dans
+  `bottomSection` — pas dans le composant coquille `BottomSheet.tsx` (`components/controls/`,
+  lui aussi sans geste, **jamais utilisé par MissionScreen** actuellement). Le vrai travail de
+  cette passe : faire de `BottomSheet` un vrai conteneur gestuel (snap 25/50/75/100, `reanimated`
+  shared value + `gesture-handler` Pan), et y rendre le contenu de `CurrentResidenceSheet` (état
+  fermé) ou de `ProblemStateCard` (état PROBLEM — fusion demandée par le spec).
+- `BottomTabBar.tsx` : rendue en bas de `bottomSection` aujourd'hui, **Mission/Alertes/Plus déjà
+  documentées comme placeholders décoratifs** (aucune régression à ce niveau — leurs actions
+  n'existent nulle part, se redistribuer vers header/hamburger ne perd donc rien de fonctionnel
+  réel). Composant **retiré du rendu de `MissionScreen`** par cette passe (pas supprimé du repo —
+  même précédent que `CurrentResidenceProgressCard`, `ComponentGalleryScreen` en référence).
+- `VoiceButton.tsx` : actuellement niché dans `BottomTabBar` (`marginTop:-28` pour flotter
+  au-dessus) — devient un flottant indépendant positionné par `MissionScreen` lui-même.
+- Aucune table/valeur de « instruction principale + N instructions secondaires » n'existe
+  aujourd'hui dans `missionScreenState.ts` — seul `alerts[]` (groupé via `AlertsRow`/`AlertCard`+
+  `Pill`, Sprint 004) s'en approche ; le spec demande un composant distinct positionné sur la
+  carte (pas dans le topOverlay), affichage single-instruction.
+
+**Portée par phase** (une seule branche, commits séparés par phase, test device après chacune) :
+
+1. **Dépendances natives** : `npx expo install react-native-gesture-handler react-native-reanimated`
+   → `babel.config.js` (`react-native-reanimated/plugin`, **doit être le dernier plugin**) →
+   `App.tsx` (`GestureHandlerRootView` à la racine) → mocks Jest (`react-native-reanimated` fournit
+   son propre mock officiel à enregistrer via `jest.config` `setupFiles`, `react-native-gesture-handler`
+   idem via `react-native-gesture-handler/jestSetup`) → `expo prebuild` + `gradlew installDebug` →
+   vérifier que l'app démarre toujours (pas de régression, aucun changement fonctionnel visible).
+2. **Header restauré** : `AppHeader.tsx` reprend hamburger (gauche) + logo centré + « OPÉRATEUR »
+   (Wordmark) + statut sync + cloche alertes (droite), hauteur cible 11-13% écran. Props
+   `onMenu?/onAlerts?/alertsCount?/syncState`. `onMenu`/`onAlerts` restent **no-op** pour l'instant
+   (mêmes destinations placeholders que l'ancien `BottomTabBar` — Mission/Plus/Alertes n'ont
+   toujours pas d'écran réel, Phase 11 roadmap).
+3. **Retrait de la barre de navigation du bas** : `MissionScreen.tsx` ne rend plus `BottomTabBar`.
+   `VoiceButton` devient un flottant positionné par `MissionScreen` (au-dessus du bottom sheet ou
+   bas-droite, diamètre 64-72px, cohérent avec le composant existant).
+4. **Mission card compacte** : `MissionCardCompact.tsx` étendue (chip d'état + chrono inline),
+   remplace `MissionCard` (pleine) dans `MissionScreen.topSection`. Toucher ouvre toujours
+   `onDetails` (no-op, comme avant).
+5. **Bandeau d'instruction contextuelle sur la carte** : nouveau composant
+   `InstructionBanner.tsx` (icône+texte principal + chip `+N instructions`, style proche
+   `AlertCard`/`Pill` réutilisés) — affiché en EN APPROCHE/EN COURS seulement, positionné sous la
+   mission card compacte (pas dans `topOverlay` actuel, qui reste pour `OfflineIndicator`).
+   `missionScreenState.ts` gagne `primaryInstruction?: {icon, text}` +
+   `secondaryInstructionsCount?: number`.
+6. **Bottom sheet extensible réel** : `BottomSheet.tsx` (`components/controls/`) refondu avec
+   `reanimated`/`gesture-handler` (snap 25/50/75/100, position fermée = contenu actuel de
+   `CurrentResidenceSheet`). `MissionScreen` rend `BottomSheet` au lieu de `CurrentResidenceSheet`
+   directement ; `CurrentResidenceSheet` devient le **contenu** de la position fermée (garde ses
+   4 boutons Appeler/Note/Itinéraire/Signaler), la position ouverte affiche instructions/contact/
+   photos/notes/historique (contenu minimal pour cette passe — pas de nouvelles données serveur à
+   inventer, ce que `missionScreenState.ts` expose déjà suffit, étoffer plus tard si besoin réel).
+7. **Fusion Problème/Résidence** : en état PROBLEM, le bottom sheet affiche le contenu de
+   `ProblemStateCard` à la place de `CurrentResidenceSheet` (35-42% écran, semi-ouvert) —
+   `leftColumn` (actuel emplacement de `ProblemStateCard`) retiré, plus de carte flottante séparée
+   pour cet état.
+8. **Calibrage des 4 écrans** : comparer chaque état aux répartitions cibles du spec (%
+   header/mission/carte/résidence par écran) sur device réel (TECNO KL4), ajuster `spacing`/
+   tokens existants (jamais de valeur inventée hors échelle `spacing`) comme lors des passes de
+   calibrage précédentes.
+9. **Mocks/tests** : `missionScreenMocks.ts` mis à jour (instructions des exemples du spec :
+   « Plate-bande au fond », « Boîte aux lettres à droite de l'entrée »). Tests Jest mis à jour
+   pour les nouveaux composants/props ; mock `reanimated`/`gesture-handler` ajoutés à la config
+   Jest (même famille que les mocks `rnmapbox`/`lucide`/`async-storage` existants).
+
+**Réalisé conformément au plan, phases 1-9 toutes terminées et vérifiées sur device (TECNO
+KL4)** :
+1. Dépendances natives ajoutées (`react-native-gesture-handler` ~2.32, `react-native-reanimated`
+   4.5.1 + peer `react-native-worklets` 0.10.1) — build restreint à `reactNativeArchitectures=
+   arm64-v8a` via nouveau plugin `plugins/withDevSingleAbi.js` (dev-only, sinon le build 4-ABI
+   dépassait la limite de 10 min de l'outillage). Bug réel trouvé et corrigé au passage :
+   `AuthContext.getSession()` sans `.catch()` pouvait bloquer l'app indéfiniment sur `'loading'`.
+2. `AppHeader.tsx` restauré (hamburger/logo/OPÉRATEUR/sync/cloche), `syncState` threadé via
+   `SYNC_STATE_META` exporté de `SyncIndicator.tsx` (pas de mapping dupliqué).
+3. `BottomTabBar` retirée de `MissionScreen` (composant conservé, plus rendu) ; `VoiceButton`
+   flottant indépendant (label texte rendu optionnel — chevauchait le contenu en dessous une fois
+   sorti de la barre).
+4. `MissionCardCompact.tsx` réécrite selon le spec exact ; remplace `MissionCard` pleine dans
+   `MissionScreen`.
+5. **Aucun code ajouté** — `alerts`/`AlertsRow`/`topOverlay` (Sprint 004) satisfaisaient déjà
+   exactement le besoin, textes d'exemple identiques déjà dans les mocks. Vérifié avant de coder,
+   pas de doublon créé.
+6. `BottomSheet.tsx` refondu avec de vrais gestes (`Gesture.Pan` + `useSharedValue`/
+   `useAnimatedStyle`/`withSpring`), snap 25/50/75/100, plein-bord. Cycle ouverture/fermeture
+   vérifié sur device. Deux pièges Reanimated 4 corrigés (lecture `.value` pendant le rendu ;
+   fonction JS plate appelée depuis un worklet sans directive `'worklet'`, crash
+   `[Worklets] Tried to synchronously call a Remote Function`).
+7. `leftColumn` (colonne PROBLEM étroite) retirée ; `ProblemStateCard` devient le contenu du
+   sheet en état PROBLEM. **Bug de rendu réel trouvé et corrigé** : texte invisible dans les 2
+   boutons d'action (confirmé non-logique via test Jest jetable) — `Txt` en enfant direct de
+   `PressableScale` (Animated classique `react-native`) imbriqué dans l'Animated.View Reanimated
+   de `BottomSheet` ne peignait pas sur ce device/GPU ; fixé en passant à `Pressable` brut pour
+   ces 2 boutons (perte de l'animation scale, acceptable). Règle consignée dans `memory.md` pour
+   la suite.
+8. Les 4 écrans comparés sur device : nette amélioration de l'espace carte partout (retrait de la
+   barre du bas + carte compacte). La limite déjà documentée (EN COURS + hors-ligne + alerte)
+   persiste mais bien moins sévère qu'avant — pas une régression, pas retentée en boucle.
+9. Mocks déjà conformes (découvert en Phase 5) ; tests Jest mis à jour (`missionScreen.test.tsx` :
+   retrait de l'assertion sur l'ancien tab « Carte » disparu) ; mocks `react-native-worklets`
+   (pas `react-native-reanimated` — son propre `mock.js` importe l'entrée réelle et plante sous
+   Jest) + `react-native-gesture-handler/jestSetup.js` ajoutés à la config Jest.
+
+`tsc`/`eslint`/`jest` (91/91, 10 suites)/`expo-doctor` (20/20) tous verts. **Impact
+documentation** : `memory.md` (3 sections détaillées : Phase 1, Phases 2-6, Phase 7 — pièges
+Reanimated 4, bug de rendu texte, technique de diagnostic), `tasks.md`, `file-index.md`.
+
+**Hors scope, non inventé, suivis ouverts** : contenu réel du bottom sheet en position ouverte
+au-delà de ce que `missionScreenState.ts` expose déjà (photos/historique détaillé = données
+serveur qui n'existent
+pas encore) ; vraies destinations Mission/Alertes/Plus (Phase 11 roadmap, inchangé) ; transitions
+automatiques déclenchées par géolocalisation réelle (GPS Engine existe mais n'est pas câblé à
+`MissionScreen`, décision de portée déjà actée plusieurs sprints — pas réouverte ici).
+
+**Vérification** : `tsc`/`eslint`/`jest` verts après chaque phase ; comparaison visuelle sur
+device réel (TECNO KL4) contre les répartitions % du spec pour les 4 écrans, à la fin.
+
+## Archivé
+
 ### ✅ Intégration Supabase réelle — suivi explicite du Sprint 013-014 (2026-08-02)
 
 **Déclencheur** : le propriétaire vient de rendre `reca-app` accessible sur cette machine

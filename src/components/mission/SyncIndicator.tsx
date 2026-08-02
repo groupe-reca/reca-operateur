@@ -7,7 +7,9 @@ import { Pill } from '../ui/Pill';
 import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Txt';
 
-const META: Record<SyncState, { label: string; color: string; icon: typeof Cloud }> = {
+// Exported so other locations (e.g. AppHeader's compact sync icon) share the
+// exact same state -> icon/color mapping instead of duplicating it.
+export const SYNC_STATE_META: Record<SyncState, { label: string; color: string; icon: typeof Cloud }> = {
   synced: { label: 'Synchronisé', color: colors.success, icon: Check },
   syncing: { label: 'Synchronisation…', color: colors.navigation, icon: RefreshCw },
   pending: { label: 'En attente', color: colors.warning, icon: Cloud },
@@ -16,7 +18,7 @@ const META: Record<SyncState, { label: string; color: string; icon: typeof Cloud
 };
 
 export function SyncIndicator({ state }: { state: SyncState }) {
-  const meta = META[state];
+  const meta = SYNC_STATE_META[state];
   return (
     <Pill>
       <Icon icon={meta.icon} color={meta.color} size={14} />

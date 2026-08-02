@@ -46,7 +46,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!cancelled) setState({ status: 'signedIn', session, employeeId });
     }
 
-    supabase.auth.getSession().then(({ data }) => hydrate(data.session));
+    // A rejected getSession() (e.g. a broken AsyncStorage read) must not
+    // leave the app stuck on `loading` forever — fall back to signed-out
+    // rather than swallowing the rejection silently.
+    supabase.auth
+      .getSession()
+      .then(({ data }) => hydrate(data.session))
+      .catch(() => {
+        if (!cancelled) setState({ status: 'signedOut' });
+      });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
       hydrate(session);

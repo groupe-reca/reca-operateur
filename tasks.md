@@ -10,6 +10,23 @@
 
 ## Terminé
 
+- [x] **Refonte visuelle des écrans opérateur** (branche `PLAN-ECRANS-OPERATEUR-RECA`,
+  2026-08-02) — 9 phases séquentielles, toutes terminées et vérifiées sur device (TECNO KL4).
+  Détail complet dans `plans.md` (archivé). Source : `.input/PLAN-ECRANS-OPERATEUR-RECA.md`.
+  Points marquants : header restauré (annule la simplification du même jour, nouvelle demande
+  explicite) ; barre de navigation du bas retirée ; mission card compacte ; bottom sheet gestuel
+  réel (`react-native-gesture-handler`+`react-native-reanimated` ajoutés) ; fusion Problème/
+  Résidence. **2 bugs réels trouvés et corrigés en cours de route** (pas juste de la fidélité
+  visuelle) : `AuthContext.getSession()` sans `.catch()` pouvait bloquer l'app indéfiniment ; texte
+  invisible dans les boutons d'action du panneau Problème (`Txt` en enfant direct de
+  `PressableScale` imbriqué dans l'Animated.View Reanimated de `BottomSheet` — voir memory.md).
+  `tsc`/`eslint`/`jest` (91/91)/`expo-doctor` (20/20) verts.
+- [ ] **Suivi ouvert — bouton UI « Fermer la mission »** persiste (non lié à cette refonte,
+  voir suivi antérieur du câblage Supabase).
+- [ ] **Suivi ouvert — contenu du bottom sheet en position ouverte** : au-delà des infos déjà
+  exposées par `missionScreenState.ts`, le spec évoque photos/historique détaillé — données
+  serveur qui n'existent pas encore, à étoffer seulement si un besoin réel se présente.
+
 - [x] **Sprint 001 — Initialisation** (branche `sprint-001-initialisation`, 2026-07-30)
   Pivot du scaffold Vite vers **React Native + Expo** (SDK 57 / RN 0.86 / React 19.2 / TS 6
   strict, template `blank-typescript`). Fait : suppression des fichiers Vite ; `app.json`

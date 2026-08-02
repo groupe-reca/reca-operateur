@@ -56,7 +56,17 @@ export function ComponentGalleryScreen() {
           etaLabel="1h 45 min (est.)"
           onDetails={() => {}}
         />
-        <MissionCardCompact missionId="24-01-15" index={3} total={28} progressPct={10} />
+        <MissionCardCompact
+          missionId="24-01-15"
+          secteur="Saint-Jérôme"
+          index={3}
+          total={28}
+          progressPct={10}
+          phaseLabel="EN ROUTE"
+          phaseSeconds={277}
+          phaseColor={colors.navigation}
+          onDetails={() => {}}
+        />
       </Section>
 
       <Section title="Chronomètre de phase">
@@ -124,10 +134,10 @@ export function ComponentGalleryScreen() {
         </View>
       </Section>
 
-      <Section title="Bottom sheet (25 %)">
-        <BottomSheet snap={25}>
+      <Section title="Bottom sheet (25 %, glisser pour changer)">
+        <BottomSheet initialSnap={25}>
           <Txt variant="body" color={colors.textSecondary}>
-            Coquille de panneau — gestes ajoutés à l&apos;assemblage (Sprint 003).
+            Glissable — 25/50/75/100 % (refonte 2026-08-02).
           </Txt>
         </BottomSheet>
       </Section>

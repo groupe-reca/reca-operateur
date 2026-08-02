@@ -887,6 +887,122 @@
   toujours pas `MissionContext`, donc aucune action opérateur réelle ne peut encore déclencher une
   transition sur la vraie Mission #9 depuis l'UI.
 
+## Refonte visuelle — Phase 1 : dépendances natives (branche `PLAN-ECRANS-OPERATEUR-RECA`, 2026-08-02)
+
+- **`react-native-gesture-handler` + `react-native-reanimated` (v4.5.1) + `react-native-worklets`
+  ajoutés** (`npx expo install`, `expo-doctor` signale `react-native-worklets` comme peer
+  dépendance **requise séparément** par Reanimated v4 — pas auto-installée). `babel.config.js` :
+  `react-native-reanimated/plugin` ajouté (**doit être le dernier plugin de la liste**). `App.tsx` :
+  `GestureHandlerRootView` à la racine (englobe `SafeAreaProvider`).
+- **Piège de build critique — durée dépasse la limite de 10 min des tâches d'outillage** :
+  compiler les 4 ABI (armeabi-v7a/arm64-v8a/x86/x86_64) pour reanimated/gesture-handler/worklets
+  (C++ CMake lourd, en plus d'`expo-modules-core`) a fait échouer **4 tentatives consécutives**
+  de `./gradlew installDebug` en arrière-plan (statut « killed », pas un vrai timeout Gradle — le
+  process JVM du daemon Gradle continue de tourner en arrière-plan après que l'outil ait « tué »
+  sa commande, ce qui a bien failli causer une corruption par accès concurrent quand une 2e
+  tentative a démarré alors que la 1re tournait encore — toujours `./gradlew --stop` + vérifier
+  qu'aucun `java.exe` ne reste avant de relancer). **Fix retenu** : restreindre `gradle.properties`
+  à `reactNativeArchitectures=arm64-v8a` (le seul ABI du TECNO KL4, seul appareil de test sur
+  cette machine) — a réduit le build de >10 min (jamais terminé) à **~5 min** (`installDebug`
+  réussi du premier coup une fois restreint). **Rendu durable** via un nouveau plugin de config
+  Expo `plugins/withDevSingleAbi.js` (même pattern que `withGradleJdk17.js` — `android/` est
+  gitignored/régénéré par `expo prebuild`, donc ce fix doit survivre au prebuild, pas juste être
+  un edit à la main). **Marqué explicitement dev-only** : à retirer/conditionner avant tout build
+  multi-appareils ou de distribution réelle.
+- **Faux positif de blocage total au premier lancement post-install** : après le build réussi, le
+  premier `am force-stop` + relance a montré un écran bleu marine totalement vide pendant
+  plusieurs minutes (aucune erreur logcat, process vivant, `libreanimated.so` chargé avec succès,
+  Mapbox initialisé) — **piégeant car indiscernable du splash screen** (`app.json` :
+  `backgroundColor: "#0B1020"` = exactement `colors.bg`, donc un splash jamais caché a le même
+  rendu visuel qu'un écran d'app bloqué). Logs `.expo/dev/logs/start.log` ont confirmé un vrai
+  hang côté Metro (« connection terminated... after not responding for 60 seconds »). **Résolu
+  par un second relaunch** (force-stop + monkey) — logs de diagnostic temporaires ont confirmé
+  que la 2e tentative a chargé les polices, cache le splash et résolu `getSession()` normalement
+  en <1s ; jamais reproduit depuis. Cause probable : condition de course au tout premier cold
+  start après un install natif majeur (nouveau runtime worklets à initialiser), pas un bug de
+  code. **Vrai bug trouvé au passage et corrigé** : `AuthContext.tsx` — `supabase.auth
+  .getSession().then(...)` n'avait **aucun `.catch()`** ; un rejet (lecture AsyncStorage cassée,
+  etc.) aurait laissé l'état bloqué sur `'loading'` **pour toujours** (silencieusement, aucune
+  UI ne s'affiche jamais) — fixé par un repli explicite vers `'signedOut'` en cas d'échec.
+  **Réflexe à garder** : face à un écran bleu marine totalement vide sans erreur logcat, vérifier
+  D'ABORD `.expo/dev/logs/start.log` (contient les `console.log`/erreurs JS même sans redbox
+  visible) avant de supposer un bug de rendu — et se rappeler que le splash et le fond d'écran
+  réel sont **visuellement identiques** dans cette app.
+- **Vérifié fonctionnel** : app démarre, se connecte (session persistée réutilisée), affiche
+  l'écran mission complet (mocks `MissionScreenPreview`) sans régression visible avec les 3
+  nouveaux modules natifs actifs. `tsc`/`eslint`/`jest` (91/91) verts.
+
+## Refonte visuelle — Phases 2-6 (branche `PLAN-ECRANS-OPERATEUR-RECA`, 2026-08-02)
+
+- **Header restauré** (`AppHeader.tsx`) : repris quasi verbatim de la version pré-simplification
+  (`git show 18e6bcb^:...`), avec `syncState` désormais threadé (icône colorée via
+  `SYNC_STATE_META`, exporté depuis `SyncIndicator.tsx` pour ne pas dupliquer le mapping état→
+  icône/couleur entre le header et `MissionCard`).
+- **Mission card compacte** (`MissionCardCompact.tsx` réécrite) : contenu resserré exactement
+  selon le spec (titre+Détails / secteur / une seule ligne résidences+%+état·chrono + barre fine
+  3px) — le statut sync n'y est plus dupliqué (vit maintenant uniquement dans le header).
+- **Phase 5 (bandeau d'instruction) : aucun code ajouté, déjà satisfait** — `alerts`/`AlertsRow`/
+  `topOverlay` (Sprint 004) faisaient déjà exactement ce que demandait le spec, jusqu'aux textes
+  d'exemple identiques déjà présents dans `missionScreenMocks.ts` (« Plate-bande au fond »,
+  « Boîte aux lettres à droite de l'entrée »). Toujours vérifier les mocks existants avant de
+  construire un nouveau composant qui pourrait dupliquer un mécanisme déjà en place.
+- **`VoiceButton` affichait toujours un label texte** (« Annonce ») même en usage icône-seule —
+  invisible dans `BottomTabBar` (fond de la barre) mais chevauchait le contenu en dessous une
+  fois flottant indépendamment. `label` rendu optionnel (`undefined` = pas de texte) ;
+  `BottomTabBar` passe explicitement `label="Annonce"` pour ne pas régresser son propre rendu.
+- **`BottomSheet.tsx` refondu avec de vrais gestes** (`react-native-gesture-handler` `Gesture.Pan`
+  + `react-native-reanimated` `useSharedValue`/`useAnimatedStyle`/`withSpring`) : le doigt pilote
+  directement une hauteur animée pendant le drag, un `withSpring` claque au snap (25/50/75/100)
+  le plus proche au relâchement. Vérifié sur device (TECNO KL4) : cycle ouverture+fermeture par
+  glissement fonctionne, `adb shell input swipe` suffit pour simuler (mais un swipe qui commence
+  **sur** le `VoiceButton` flottant — superposé en `zIndex:10` — est intercepté par son propre
+  `Pressable` au lieu d'atteindre le `GestureDetector` derrière ; démarrer le swipe ailleurs sur
+  le sheet).
+  - **Piège Reanimated 4 #1** : `useSharedValue(otherSharedValue.value)` **pendant le rendu**
+    déclenche un warning strict-mode (« Reading from `value` during component render ») — même
+    juste pour initialiser une seconde shared value avec la même valeur de départ. Fix : calculer
+    la valeur initiale indépendamment (même expression source), jamais lire `.value` d'une autre
+    shared value hors d'un worklet/effet.
+  - **Piège Reanimated 4 #2 (plus sérieux, crash réel)** : appeler une fonction JS "plate" (définie
+    hors composant, sans directive `'worklet'`) depuis l'intérieur d'un callback de geste (`onEnd`,
+    qui s'exécute sur le UI thread) lève **`[Worklets] Tried to synchronously call a Remote
+    Function`** — architecture v4 (Worklets séparé de Reanimated) refuse maintenant ce qui aurait
+    pu être une conversion silencieuse en v3. **Fix** : ajouter explicitement `'worklet';` en
+    première ligne de toute fonction utilitaire pure appelée à la fois depuis le JS thread (rendu)
+    et depuis un worklet (callback de geste) — ici `pctToPx` dans `BottomSheet.tsx`.
+  - **Test Jest** : mocker `react-native-worklets` (pas `react-native-reanimated` — son propre
+    `mock.js` réexporte `./src/mock` qui importe `./index` en entier et plante sous Jest, module
+    natif absent) via `moduleNameMapper` → `react-native-worklets/src/mock.ts` (le module fournit
+    son propre mock officiel, contrairement à `async-storage` qui n'en avait pas d'auto-enregistré
+    — voir plus haut). `react-native-gesture-handler/jestSetup.js` déjà branché en Phase 1 reste
+    nécessaire en plus.
+
+## Refonte visuelle — Phase 7 : fusion Problème/Résidence (2026-08-02)
+
+- **`leftColumn` (colonne flottante étroite, 220px) retirée** — `ProblemStateCard` (props
+  `bare` ajoutée, même convention que `CurrentResidenceSheet`) devient le contenu du
+  `BottomSheet` gestuel en état PROBLEM, `CurrentResidenceSheet` sinon. Corrige de facto le
+  suivi ouvert du 2026-08-02 (boutons d'action coupés sur écran étroit) — le sheet plein-bord a
+  bien plus d'espace que l'ancienne colonne.
+- **Bug de rendu réel découvert et corrigé — texte invisible dans les boutons d'action** : après
+  la fusion, « Reprendre plus tard »/« Passer à la suivante » s'affichaient comme des pilules
+  vides (bordure/fond visibles, **aucun texte**), reproductible à tous les snaps (25/50/75/100),
+  avec ou sans geste de glissement. **Vérifié via un test Jest jetable que ce n'était pas un bug
+  de logique** : `getByText` trouvait le texte dans l'arbre — le composant était correct, seul le
+  rendu natif était en cause. **Cause isolée par comparaison structurelle** : `PressableScale`
+  (`components/ui/`) utilise l'API `Animated` **classique** de `react-native` (pas Reanimated) ;
+  partout où elle fonctionne dans l'app (`FloatingActionButton`, `VoiceButton`), le `Txt` de
+  label est un **frère** du `PressableScale`, jamais un enfant direct. `ProblemStateCard` était le
+  **seul** endroit à mettre le `Txt` en enfant direct de `PressableScale` — invisible seulement
+  une fois nichée dans l'`Animated.View` piloté par **Reanimated** de `BottomSheet` (Phase 6) :
+  un `Animated.View` classique (`react-native`) imbriqué dans un `Animated.View` Reanimated dont
+  la taille change ne peint pas toujours le texte de ses enfants directs sur ce device/GPU (Mali).
+  **Fix** : remplacé `PressableScale` par un `Pressable` brut pour ces 2 boutons précis (perte de
+  l'animation de pression scale, acceptable pour ce cas) — **rétabli et vérifié** sur device.
+  **Règle à retenir pour la suite de cette refonte** : ne jamais mettre un `Txt` en enfant direct
+  d'un `PressableScale` à l'intérieur de `BottomSheet` (ou de tout futur ancêtre animé par
+  Reanimated) — toujours en frère, comme le fait déjà `FloatingActionButton`/`VoiceButton`.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,
