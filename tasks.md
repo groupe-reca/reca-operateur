@@ -287,7 +287,29 @@
   reste un placeholder typé — même décision de portée que State Machine/GPS/Sync Engine (moteur
   prêt et testé, aucun appelant réel encore). Vérifié : `tsc`/`eslint`/`jest` (100/100, 11 suites,
   dont `tests/offlineEngine.test.ts` — 9 tests)/`expo-doctor` (20/20) verts.
-- [ ] **Sprint 016 — Voice Engine** (Phase 10).
+- [x] **Sprint 016 — Voice Engine** (Phase 10, branche `sprint-016-voice-engine`, 2026-08-02).
+  Contrairement au GPS/réseau (capteur réel différé dans leurs sprints), la roadmap demande
+  explicitement « intégrer la synthèse vocale locale » — **question posée au propriétaire,
+  réponse : vraie synthèse maintenant** (`expo-speech` ajouté, nouveau build natif arm64-v8a).
+  Moteur pur `src/engines/voice/` (`docs/06`), aucun timer propre : `types.ts`
+  (`VoiceInputEvent`/`VoicePriority`/`VoiceAnnouncement`/`Speaker` injecté),
+  `textFormatting.ts` (`normalizeAddressForSpeech` — abréviations `r./av./boul./ch./N/S/E/O`,
+  **prononciation des nombres en toutes lettres volontairement hors scope** — les TTS embarqués
+  lisent déjà naturellement un petit nombre inséré dans une phrase, convertisseur français
+  nombre→texte jugé disproportionné pour le gain), `messages.ts` (un constructeur pur par type
+  d'événement, phrasés `docs/06` verbatim, regroupement résidence terminée + prochaine résidence),
+  `voiceEngine.ts` (`createVoiceEngine({clock, speaker, cooldownMs?})` : file triée
+  priorité→heure de création, anti-répétition par clé persistante, expiration croisée
+  (`RESIDENCE_STARTED` retire un `APPROACHING` encore en file pour la même résidence), interruption
+  uniquement par une annonce `CRITICAL` sur une non-critique en cours, cooldown global contournable
+  (répétition manuelle), mode silencieux). `src/integrations/voice/expoSpeaker.ts` — implémentation
+  réelle (voix française canadienne → française générique → toute voix française → défaut système,
+  jamais inventée). **Hors scope, non câblé** : `MissionContext`/`VoiceButton` (même décision que
+  les 4 moteurs précédents) ; audio ducking, interruption d'appel téléphonique réelle, écran
+  verrouillé (nécessitent des tests device difficiles à automatiser) ; détection gauche/droite de
+  l'entrée (géométrie non disponible) ; simulateur dev. Vérifié : `tsc`/`eslint`/`jest`
+  (116/116, 12 suites, dont `tests/voiceEngine.test.ts` — 16 tests)/`expo-doctor` (20/20) verts,
+  app sans régression sur device (TECNO KL4) après le nouveau build natif.
 - [ ] **Sprint 017-019 — Auth, mission assignée, fin de mission, mode développement** (Phase 11).
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 

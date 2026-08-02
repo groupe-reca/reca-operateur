@@ -156,7 +156,18 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     `getState()`/`on()`/`getEvents()` — réutilise `NetworkStatusProvider` du Sync Engine, pas de
     second contrat réseau inventé), `index.ts`. **Pas encore câblé** dans
     `MissionContext.offlineState` (même limite que les 3 autres moteurs).
-  - `voice/` (informe) — encore vide (Sprint 016, Phase 10).
+  - `voice/` (Sprint 016, 2026-08-02) — moteur pur d'annonces vocales (`docs/06`), aucun timer
+    propre : `types.ts` (`VoiceInputEvent`/`VoicePriority`/`VoiceAnnouncement`/`Speaker` injecté/
+    `VoiceEngineEvent`), `textFormatting.ts` (`normalizeAddressForSpeech` — abréviations
+    `r./av./boul./ch./N/S/E/O`, prononciation des nombres en toutes lettres volontairement hors
+    scope, voir `memory.md`), `messages.ts` (`buildAnnouncement` — un constructeur pur par type
+    d'événement, phrasés `docs/06` verbatim, regroupe résidence terminée + prochaine résidence),
+    `voiceEngine.ts` (`createVoiceEngine({clock, speaker, cooldownMs?})` :
+    `handleEvent`/`processNext`/`repeatCurrentContext`/`setEnabled`/`on`/`getEvents` — file
+    triée priorité→heure, anti-répétition par clé, expiration croisée, interruption uniquement
+    par du `CRITICAL`, cooldown contournable pour la répétition manuelle), `index.ts` (barrel).
+    Intégration réelle : `src/integrations/voice/expoSpeaker.ts`. **Pas encore câblé** dans
+    `MissionContext`/`VoiceButton` (même limite que les 4 autres moteurs).
   - `map/mapCameraConfig.ts` (Sprint 005-006) — **seule partie du Map Engine réellement « sans
     React »** : constantes caméra (pitch, durées, paliers de zoom), `zoomForState` (pur, testé),
     `cameraPaddingTopFor` (dérive l'offset caméra pour l'ancre du tracteur). Le rendu Mapbox
@@ -206,7 +217,11 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   - `supabase/fetchAssignedMission.ts` — télécharge la Mission assignée à l'opérateur (+
     `mission_items` joints à `contracts`/`clients`) et la seed localement avec les **vrais id
     serveur** (jamais régénérés). `mapServerMissionToLocal` exportée séparément (pure, testée).
-  - TTS : vide, sprint futur.
+  - `voice/expoSpeaker.ts` (Sprint 016, 2026-08-02) — implémentation réelle de l'interface
+    `Speaker` du Voice Engine via `expo-speech` (voix française canadienne → française générique
+    → toute voix française → défaut système, jamais inventée ; `speak()` résout sur fin naturelle
+    **ou** arrêt, requis pour que `stop()` débloque proprement le moteur). Seul endroit hors ce
+    fichier qui importe `expo-speech` directement.
 - `src/services/` — orchestration (Authentication, Mission Loader…). Vide.
 - `src/hooks/` — hooks React minces (adaptateurs de moteurs/contexte). Vide.
 - `src/types/`
@@ -285,6 +300,12 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   système indisponible → `OFFLINE` immédiat, cycle `OFFLINE→RECOVERING→ONLINE` avec délai de
   validation respecté, confirmation immédiate par succès réel pendant `RECOVERING`,
   `lastOnlineAt` figé hors ligne, abonnement/désabonnement.
+- `tests/voiceEngine.test.ts` (Sprint 016, 2026-08-02) — 16 tests : normalisation d'adresse,
+  phrasés `buildAnnouncement`, file/priorité (`CRITICAL` avant le reste), interruption (une seule
+  fois, jamais entre même priorité), anti-répétition GPS avec levée par retour, expiration croisée
+  `APPROACHING`→`RESIDENCE_STARTED`, cooldown respecté puis contourné par avance d'horloge,
+  répétition manuelle bypass le cooldown, mode silencieux, échec de synthèse journalisé sans
+  bloquer.
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)
@@ -299,6 +320,8 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - **Gestes/animations (2026-08-02)** : `react-native-gesture-handler` ~2.32,
   `react-native-reanimated` 4.5.1 + peer requis `react-native-worklets` 0.10.1 (`expo-doctor` le
   signale si absent). Build natif restreint à `arm64-v8a` en dev (`plugins/withDevSingleAbi.js`).
+- **Voix (Sprint 016, 2026-08-02)** : `expo-speech` — synthèse vocale locale, aucun paramètre
+  natif additionnel requis au-delà du build.
 - Layout (Sprint 003) : `react-native-safe-area-context`.
 - **Carte (Sprint 005-006)** : `@rnmapbox/maps` — **premier module natif du projet**, casse la
   compatibilité Expo Go. Nécessite 2 jetons distincts (voir `.env.example` + `memory.md`) : public

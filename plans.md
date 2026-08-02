@@ -6,7 +6,102 @@
 
 ## Plan actif
 
-- (aucun — prochain : Sprint 016 (Voice Engine), à planifier ici avant de coder)
+- (aucun — prochain : Sprint 017-019 (Auth, mission assignée, fin de mission, mode développement,
+  Phase 11), à planifier ici avant de coder)
+
+## Archivé
+
+### ✅ Sprint 016 — Voice Engine (branche `sprint-016-voice-engine`, 2026-08-02)
+
+**Objectif** (Phase 10 Roadmap) : annonces vocales décrites par `docs/06-Voice-Engine.md`.
+Contrairement au GPS/réseau (capteur réel différé dans leurs sprints respectifs), le Roadmap
+liste explicitement « intégrer la synthèse vocale locale » dans les Travaux de cette phase —
+**question posée au propriétaire, réponse : vraie synthèse maintenant** (nouveau module natif
+`expo-speech`, même méthode de build que gesture-handler/reanimated).
+
+**Portée retenue** :
+- **Dedans** : moteur pur (file/priorité/anti-répétition/expiration/regroupement, `docs/06`),
+  normalisation des adresses (abréviations `r./av./boul./ch./N/S/E/O`), intégration réelle
+  `expo-speech` derrière une interface `Speaker` injectée (testable via un faux en test),
+  répétition manuelle (`repeatCurrentContext`), mode silencieux (`setEnabled`).
+- **Dehors, explicitement** : prononciation des nombres en toutes lettres (« deux cent
+  vingt-quatre ») — les moteurs TTS embarqués prononcent déjà naturellement un nombre à 3 chiffres
+  inséré dans une phrase normale sans le lire chiffre par chiffre ; construire un convertisseur
+  français nombre→texte serait une grosse pièce de code à risque d'erreurs pour un gain minime,
+  **décision pragmatique documentée, pas un oubli**. Audio ducking, interruption d'appel
+  téléphonique réelle, comportement écran verrouillé (nécessitent des tests sur device réel en
+  conditions réelles, difficiles à automatiser) ; détection gauche/droite de l'entrée (nécessite
+  géométrie d'entrée non disponible actuellement) ; simulateur dev (`docs/06` "Interface de
+  développement"/"Simulations", même différé que pour Offline Mode) ; câblage
+  `MissionContext`/`VoiceButton` (même décision de portée que les 4 moteurs précédents — moteur
+  prêt, pas encore d'appelant réel).
+
+**Design** :
+- `src/engines/voice/types.ts` — `VoiceAnnouncementType` (sous-ensemble curé des événements
+  `docs/06`), `VoicePriority = 'CRITICAL'|'HIGH'|'NORMAL'|'LOW'`, `VoiceAnnouncement`
+  (`id/type/priority/missionId?/missionItemId?/text/createdAt/expiresAt?/interruptible/
+  deduplicationKey?/cooldownMs?/sourceEvent`), `Speaker` (interface injectée :
+  `speak(text)`/`stop()`/`isAvailable()`), événements techniques (`VoiceQueued`/`VoiceStarted`/
+  `VoiceCompleted`/`VoiceInterrupted`/`VoiceSkipped`/`VoiceFailed`).
+- `src/engines/voice/textFormatting.ts` — `normalizeAddressForSpeech` (pure, testée) : développe
+  les abréviations documentées, laisse les noms propres inchangés en l'absence de règle fiable.
+- `src/engines/voice/messages.ts` — un constructeur pur par type d'événement reçu
+  (`VOICE_MISSION_STARTED`/`VOICE_NEXT_RESIDENCE`/`VOICE_APPROACHING`/`VOICE_RESIDENCE_STARTED`/
+  `VOICE_RESIDENCE_COMPLETED`/`VOICE_IMPORTANT_ALERT`/`VOICE_PROBLEM_RECORDED`/`VOICE_GPS_LOST`/
+  `VOICE_GPS_RECOVERED`/`VOICE_OFFLINE`/`VOICE_ONLINE`/`VOICE_MISSION_COMPLETED`), phrasés repris
+  verbatim des exemples `docs/06`. Regroupement résidence terminée + prochaine résidence en une
+  seule annonce quand les deux événements arrivent ensemble (résidences rapprochées).
+- `src/engines/voice/voiceEngine.ts` — `createVoiceEngine({ clock, speaker, cooldownMs=3000 })` :
+  `handleEvent(event)` (dédup par règle `docs/06` — GPS_LOST une fois jusqu'au retour, etc. —
+  puis enqueue), `processNext()` (l'appelant pompe, même principe « aucun timer propre » que les
+  moteurs précédents), une annonce `CRITICAL` interrompt une annonce en cours (`speaker.stop()`),
+  jamais entre annonces de même priorité, `repeatCurrentContext(snapshot)` (lecture manuelle
+  détaillée, ignore le cooldown), `setEnabled(bool)` (mode silencieux : événements reçus/journalisés,
+  rien lu), `getEvents()`/`on()`.
+- `src/integrations/voice/expoSpeaker.ts` — implémentation réelle de `Speaker` via `expo-speech`
+  (voix française canadienne si disponible, repli français générique puis signalement silencieux
+  — `docs/06`), seul point de contact avec `expo-speech` hors ce fichier.
+- Dépendance : `npx expo install expo-speech` → `expo prebuild` + `gradlew installDebug`
+  (`arm64-v8a`, `plugins/withDevSingleAbi.js` déjà en place) → vérifier absence de régression.
+- Tests : `tests/voiceEngine.test.ts` (file/priorité/interruption/anti-répétition/expiration/
+  regroupement/mode silencieux/répétition manuelle) + normalisation d'adresse.
+
+**Critères de réussite** : moteur testé isolément, aucune dépendance React ; `tsc`/`eslint`/`jest`
+verts ; app vérifiée sans régression sur device après le nouveau build natif.
+
+**Réalisé conformément au plan, du premier coup pour le moteur pur**. `src/engines/voice/`
+(`types.ts`, `textFormatting.ts`, `messages.ts`, `voiceEngine.ts`, `index.ts`) +
+`src/integrations/voice/expoSpeaker.ts`. Détails d'implémentation notables :
+- `handleEvent()` gère l'invalidation croisée (`RESIDENCE_STARTED` retire un `APPROACHING` encore
+  en file pour la même résidence) et la levée de dédoublonnage (`GPS_RECOVERED` efface la clé
+  `gps-lost-*`, `ONLINE` efface `offline-*`) — pas de minuteur, tout déclenché par les événements
+  eux-mêmes.
+- Interruption implémentée via un drapeau `interruptRequested` posé de façon synchrone juste avant
+  `speaker.stop()` dans `handleEvent` : comme `processNext()` est en train d'attendre la promesse
+  de `speaker.speak()` au même moment, JS étant mono-thread, l'écriture du drapeau précède
+  forcément la reprise de cette continuation (microtask) — évite un état partagé fragile ou un
+  second mécanisme de communication entre les deux fonctions.
+- Contrat `Speaker.speak()` : résout aussi bien sur fin naturelle (`onDone`) que sur arrêt
+  (`onStopped`) — nécessaire pour que `speaker.stop()` débloque proprement un `await` en cours
+  côté moteur.
+- `repeatCurrentContext()` construit l'annonce puis force `cooldownMs: 0` sur l'objet en file
+  (plutôt qu'un cas spécial dans `processNext`) — la répétition manuelle contourne le cooldown
+  par construction, sans branche supplémentaire.
+- **Piège de test découvert en écrivant `tests/voiceEngine.test.ts`** : un test de
+  dédoublonnage GPS enchaînait 2 cycles parole/résolution avec le cooldown par défaut (3000 ms)
+  actif — le 2e `processNext()` retournait `'waiting-cooldown'` sans jamais parler ni retirer
+  l'annonce de la file, laissant un item orphelin et faisant échouer une assertion de longueur de
+  file sans rapport apparent avec le cooldown. Fixé en passant `cooldownMs: 0` pour ce test
+  précis (le cooldown lui-même est testé séparément) — réflexe à garder : un test qui enchaîne
+  plusieurs `processNext()` doit soit avancer l'horloge, soit désactiver le cooldown.
+- `expo-speech` ajouté sans reproduire les pièges de build des sprints précédents (daemon Gradle
+  resté "BUSY" après un `--stop`, ou notification "killed" du harness alors que le build avait en
+  réalité réussi en arrière-plan — vérifié via l'horodatage d'installation de l'app, pas fié à la
+  seule notification).
+
+`tsc`/`eslint`/`jest` (116/116, 12 suites)/`expo-doctor` (20/20) verts. App vérifiée sans
+régression sur device (TECNO KL4) après le nouveau build natif. **Impact documentation** :
+`tasks.md`, `file-index.md`.
 
 ## Archivé
 
