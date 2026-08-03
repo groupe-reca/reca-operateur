@@ -10,6 +10,99 @@
 
 ## Archivé
 
+### ✅ Sprint 019 — Mode développement (branche `sprint-019-mode-developpement`, 2026-08-03)
+
+**Objectif** (`docs/11-Roadmap.md` Phase 11, écran « Développement ») : simuler GPS/réseau, voir
+états/file/événements/seuils, exporter les journaux, tester les transitions — « ne doit pas être
+accessible aux utilisateurs ordinaires ». **Choisi comme prochain sprint avec le propriétaire**
+(alternative écartée : Sprint 017 partie 2/N, capteurs réels — plus gros, nouveaux modules
+natifs). Contrairement à ce que son nom suggère, ce sprint **ne dépend pas** des capteurs réels :
+le simulateur GPS existe déjà (Sprint 011-012, `createGpsSimulator`), jamais câblé à
+`MissionContext` faute d'appelant — c'est exactement cet écran qui devient son appelant.
+
+**Barrière d'accès** (« ne doit pas être accessible aux utilisateurs ordinaires ») : pas de système
+de rôles dans ce repo — en inventer un serait une règle métier non validée. Utilisé à la place :
+le flag natif `__DEV__` de React Native (faux en build release), point d'entrée = le hamburger de
+`AppHeader` (`onMenu`, actuellement no-op partout) ouvre l'écran dev uniquement quand `__DEV__` est
+vrai ; en production, `onMenu` reste le placeholder existant (aucune régression, aucune nouvelle
+UI visible en prod).
+
+**Design** :
+1. **« Simuler le GPS »** : `MissionProvider` garde une instance stable de `createGpsSimulator`
+   (Sprint 011-012) autour de `gpsEngineRef.current`. Exposée via `MissionContextValue.dev.gps`
+   (`moveTo`/`advanceTime`/`loseSignal`/`recoverSignal`) — chaque appel déclenche déjà
+   `afterMutation(mission.id)` en interne (même rechargement que
+   `reportProblem`/`resolveProblem`/`skipItem`) pour que le contexte reflète immédiatement les
+   transitions que le moteur GPS aurait déclenchées. **« Tester les transitions » se fait via ce
+   simulateur** (déplacer vers la résidence active, avancer le temps) plutôt que d'exposer des
+   boutons qui appelleraient direct les commandes internes du State Machine (`enterApproach`/
+   `enterWork`/…) — plus fidèle au comportement réel, n'invente aucun raccourci qui n'existe pas
+   en production.
+2. **« Simuler le réseau »** : `STUB_NETWORK_STATUS` (constante figée à `true`) remplacé par un
+   `NetworkStatusProvider` adossé à une ref mutable (`networkOverrideRef`, partagée par Sync et
+   Offline, comme aujourd'hui). `dev.setNetworkOverride(online: boolean | null)` (`null` = réel/
+   toujours en ligne, comportement actuel inchangé) — après un changement, relance
+   `offlineEngine.checkConnectivity()` + `syncEngine.runSyncCycle()` pour refléter immédiatement.
+3. **« Voir les états »** : `dev.getStates()` (synchrone) — `mission.status`, résumé des
+   `MissionItem` par statut, `gpsEngine.getPhase()`, `synchronizationState`, `offlineState` (déjà
+   tous dans le contexte, agrégés ici pour l'écran).
+4. **« Voir la file »** : `dev.getSyncQueue(): Promise<SyncOperation[]>` — lit directement
+   `syncOperationRepository.getAll()` (pas une nouvelle méthode moteur, juste une lecture repo,
+   cohérent avec « les moteurs ne connaissent jamais React » — c'est le contexte qui lit, pas
+   l'écran).
+5. **« Voir les événements »** : `dev.getEvents()` (synchrone) — `getEvents()` de chacun des 4
+   moteurs déjà instrumentés (GPS/Sync/Offline/Voice, tous l'exposent déjà depuis leurs sprints
+   respectifs).
+6. **« Voir les seuils »** : `DEFAULT_GPS_THRESHOLDS` (`src/engines/gps/types.ts`, Sprint 011-012)
+   affiché tel quel — `MissionContext` n'a jamais configuré d'override, donc ce sont déjà les
+   seuils réellement actifs, rien à recalculer.
+7. **« Exporter les journaux »** : `dev.exportLogs(): Promise<string>` — assemble états+file+
+   événements+transitions persistées (`stateTransitionRepository.getAll()`) en JSON, partagé via
+   `Share.share()` (API core React Native, aucune nouvelle dépendance/permission).
+8. **`DevScreen.tsx`** (nouveau, `src/screens/`, dev-only) : sections États/Simuler GPS/Simuler
+   réseau/Seuils/File/Événements + bouton Exporter, bouton Fermer. `MissionScreen.tsx` gagne une
+   prop `onMenu?` (déjà câblée à `AppHeader`, jusqu'ici toujours no-op) ; `LiveMissionScreen.tsx`
+   la branche sur `setDevScreenOpen(true)` seulement si `__DEV__`, et rend `DevScreen` à la place
+   de l'écran normal quand ouvert.
+
+**Hors scope, explicitement différé** : capteurs GPS/réseau réels (Sprint 017 partie 2/N, toujours
+hors scope) ; système de rôles/permissions serveur pour restreindre l'accès (aucun rôle
+« développeur » n'existe dans `reca-app`, `__DEV__` suffit à l'exigence documentée) ; persistance
+de l'état du simulateur entre sessions (le simulateur repart de zéro à chaque montage, comme tout
+état de dev-tool).
+
+**Vérification** : tests purs si extraction possible (seuils/format d'export) ; test d'intégration
+(`missionContext.test.tsx` — `dev.gps.moveTo`/`advanceTime` déclenchent une vraie transition State
+Machine et le contexte se met à jour ; `dev.setNetworkOverride` change `offlineState`/
+`synchronizationState`) ; `tsc`/`eslint`/`jest` verts ; `DevScreen` non accessible dans un build de
+production réel (`__DEV__` faux), non vérifiable depuis ce VPS sans build release — noté comme
+limite si applicable.
+
+**Réalisé conformément au plan, du premier coup** :
+- Points 1-8 implémentés tels que décrits : `MissionContext.tsx` garde `gpsSimulatorRef`
+  (`createGpsSimulator` autour du GPS Engine réel) et `networkOverrideRef` (remplace
+  `STUB_NETWORK_STATUS`, partagé Sync/Offline) ; `MissionContextValue.dev` expose
+  `gps`/`thresholds`/`getStates`/`getEvents`/`getSyncQueue`/`getTransitions`/
+  `setNetworkOverride`/`exportLogs` ; `DevScreen.tsx` (sections États/Simuler GPS/Simuler réseau/
+  Seuils/File/Événements/Historique + export via `Share.share()`) ; `MissionScreen.tsx` prop
+  `onMenu?` câblée à `AppHeader` (remplace le `() => {}` en dur) ; `LiveMissionScreen.tsx` ouvre
+  `DevScreen` seulement si `__DEV__ && devScreenOpen`.
+- **Test d'intégration GPS notable** (`tests/missionContext.test.tsx`) : la mission de démo n'a pas
+  de coordonnées (`seedDemoMission.ts`), donc le GPS Engine n'a jamais de résidence active tant
+  qu'elles ne sont pas définies — le test écrit directement les coordonnées de l'item actif dans le
+  faux `Db` partagé, puis un premier `dev.gps.moveTo` (no-op pour le moteur, mais recharge les
+  items via `afterMutation`) ré-arme l'effet `setActiveResidence` de `MissionContext` avec les
+  vraies coordonnées avant qu'un second `moveTo`+`advanceTime(5)` ne déclenche une vraie transition
+  EN_ROUTE→APPROACHING validée par le State Machine réel.
+- **Vérification** : `tsc --noEmit`/`eslint .`/`npx jest` tous verts (142/142 tests, dont 2
+  nouveaux tests d'intégration `dev.gps`/`dev.setNetworkOverride` dans `missionContext.test.tsx` +
+  3 nouveaux `tests/devScreen.test.tsx`), `npx expo-doctor` 20/20. **Non vérifié sur device réel** :
+  aucune dépendance native ajoutée (donc aucun nouveau build requis), mais pas testé physiquement
+  sur l'appareil cette passe ni en build release (pour confirmer `__DEV__` masque bien l'écran) —
+  suivi ouvert, même pattern que les Sprints 017/018.
+
+## Archivé
+
 ### ✅ Sprint 018 — Fin de mission (branche `sprint-018-fin-de-mission`, 2026-08-02)
 
 **Objectif** (`docs/11-Roadmap.md` Phase 11, écran « Fin de mission » + suivi ouvert « bouton UI

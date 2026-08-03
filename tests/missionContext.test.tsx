@@ -6,6 +6,7 @@ import { createStateMachine } from '@/engines/state-machine';
 import type { SyncOperationOutcome, SyncTransport } from '@/engines/sync/types';
 import type { SyncOperation } from '@/domain/entities';
 import { MissionProvider, useMissionContext } from '@/context/MissionContext';
+import { createMissionItemRepository } from '@/persistence/repositories/missionItemRepository';
 
 import { createFakeDb } from './testFakeDb';
 
@@ -174,5 +175,62 @@ describe('MissionContext — real engines wired over a fake DB', () => {
 
     expect(outcome?.success).toBe(true);
     await waitFor(() => expect(result.current.mission?.status).toBe('COMPLETED'));
+  });
+
+  it('dev.setNetworkOverride(false) forces the Offline Engine OFFLINE, null lets it recover', async () => {
+    const { result } = renderMissionContext();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.offlineState.status).toBe('ONLINE');
+
+    await act(async () => {
+      await result.current.dev.setNetworkOverride(false);
+    });
+    await waitFor(() => expect(result.current.offlineState.status).toBe('OFFLINE'));
+
+    await act(async () => {
+      await result.current.dev.setNetworkOverride(null);
+    });
+    // docs/08: OFFLINE -> RECOVERING as soon as the network signal comes
+    // back, never straight back to ONLINE without validation — same rule
+    // tested directly in offlineEngine.test.ts.
+    await waitFor(() => expect(result.current.offlineState.status).toBe('RECOVERING'));
+  });
+
+  it('dev.gps drives the real GPS Engine -> State Machine -> context chain (EN_ROUTE -> APPROACHING)', async () => {
+    const { result, db } = renderMissionContext();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const activeId = result.current.activeMissionItem?.id as string;
+    const coordinate = { latitude: 45.78, longitude: -73.95 };
+
+    // The demo seed has no coordinates (seedDemoMission.ts) — GPS Engine
+    // never receives an active residence for a null-coordinate item (see the
+    // guard in MissionContext.tsx's own useEffect). Setting them directly
+    // simulates what a real Supabase mission_item already has.
+    const itemRepo = createMissionItemRepository(db);
+    const activeItem = await itemRepo.getById(activeId);
+    await itemRepo.upsert({ ...(activeItem as NonNullable<typeof activeItem>), ...coordinate });
+
+    // First moveTo is a no-op for the engine (it has no active residence
+    // yet) but its internal afterMutation reloads the item with its new
+    // coordinates — which re-triggers MissionContext's own effect and
+    // finally calls gpsEngine.setActiveResidence with the real coordinate.
+    await act(async () => {
+      await result.current.dev.gps.moveTo(coordinate);
+    });
+
+    // Now the engine has an active residence at exactly `coordinate` (0 m
+    // away, well within the default 250 m approach radius) — one more fix
+    // starts the entry-validation window, advancing time past the default
+    // 5 s validation delay confirms it (see gpsEngine.test.ts for the
+    // detailed radius/delay behaviour, not re-tested here).
+    await act(async () => {
+      await result.current.dev.gps.moveTo(coordinate);
+      await result.current.dev.gps.advanceTime(5);
+    });
+
+    await waitFor(() => {
+      expect(result.current.allMissionItems.find((i) => i.id === activeId)?.status).toBe('APPROACHING');
+    });
   });
 });

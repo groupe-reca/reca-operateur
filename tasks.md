@@ -310,7 +310,11 @@
   l'entrée (géométrie non disponible) ; simulateur dev. Vérifié : `tsc`/`eslint`/`jest`
   (116/116, 12 suites, dont `tests/voiceEngine.test.ts` — 16 tests)/`expo-doctor` (20/20) verts,
   app sans régression sur device (TECNO KL4) après le nouveau build natif.
-- [ ] **Sprint 017-019 — Auth, mission assignée, fin de mission, mode développement** (Phase 11).
+- [x] **Sprint 017-019 — Auth, mission assignée, fin de mission, mode développement** (Phase 11,
+  les 4 sujets nommés par ce titre). **Reste de la Phase 11 non couvert par ce titre** (donc pas
+  marqué ici) : écrans « Aucune mission »/« Mission active »/« Paramètres »/« Mode hors ligne »,
+  capteurs GPS/réseau réels (`expo-location`/NetInfo) — tous documentés comme suivis ouverts dans
+  les entrées Sprint 017/018/019 ci-dessous.
   - [x] **Sprint 017 (partie 1/N) — Câblage réel de MissionContext** (branche
     `sprint-017-mission-context-wiring`, 2026-08-02, PR :
     https://github.com/groupe-reca/reca-operateur/pull/1). Découpage validé avec le propriétaire : cette
@@ -371,6 +375,33 @@
     `tests/missionContext.test.tsx`)/`expo-doctor` (20/20). **Non vérifié sur device** : aucune
     mission réelle actuellement dans l'état éligible (Mission #9 déjà `COMPLETED`) — suivi ouvert,
     même pattern que le Sprint 017.
+  - [x] **Sprint 019 — Mode développement** (branche `sprint-019-mode-developpement`,
+    2026-08-03, PR : https://github.com/groupe-reca/reca-operateur/pull/3). Choisi comme prochain
+    sprint avec le propriétaire (alternative écartée : Sprint 017 partie 2/N, capteurs réels —
+    plus gros). Contrairement à ce que son nom suggère, ne
+    dépendait pas des capteurs réels : le simulateur GPS existait déjà (Sprint 011-012,
+    `createGpsSimulator`), jamais câblé à `MissionContext` faute d'appelant — ce sprint devient son
+    appelant. **Barrière d'accès** : pas de système de rôles dans ce repo (en inventer un aurait
+    été une règle métier non validée) — utilisé à la place le flag natif `__DEV__` de React Native
+    (faux en build release), point d'entrée = le hamburger de `AppHeader` (`onMenu`, no-op partout
+    ailleurs). **`MissionContext.dev`** (nouveau) : `gps` (enveloppe `createGpsSimulator` autour du
+    vrai GPS Engine, recharge le contexte après chaque appel comme les autres commandes),
+    `thresholds` (`DEFAULT_GPS_THRESHOLDS`, jamais overridé dans ce repo — déjà les seuils
+    réellement actifs), `getStates`/`getEvents` (agrègent ce que les 4 moteurs exposent déjà),
+    `getSyncQueue`/`getTransitions` (lecture directe des repositories, pas de nouvelle méthode
+    moteur), `setNetworkOverride` (remplace la constante figée `STUB_NETWORK_STATUS` par une ref
+    mutable partagée Sync/Offline), `exportLogs` (JSON, partagé via `Share.share()` — API core RN,
+    aucune nouvelle dépendance). **`DevScreen.tsx`** (nouveau) : sections États/Simuler GPS/Simuler
+    réseau/Seuils/File/Événements/Historique + export. **« Tester les transitions » réalisé via le
+    simulateur GPS** (déplacer vers la résidence cible + avancer le temps) plutôt que des boutons
+    qui appelleraient direct les commandes internes du State Machine — plus fidèle au comportement
+    réel de production. **Hors scope, différé** : capteurs GPS/réseau réels (inchangé), système de
+    rôles serveur pour restreindre l'accès (`__DEV__` suffit à l'exigence documentée). Vérifié :
+    `tsc`/`eslint`/`jest` verts (142/142, 16 suites, dont 2 nouveaux tests d'intégration
+    `dev.gps`/`dev.setNetworkOverride` dans `tests/missionContext.test.tsx` + 3 nouveaux
+    `tests/devScreen.test.tsx`)/`expo-doctor` (20/20). **Non vérifié sur device** : aucun nouveau
+    build natif requis (aucune dépendance native ajoutée), mais pas testé physiquement sur
+    l'appareil cette passe — suivi ouvert, même pattern que les Sprints 017/018.
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 
 ## À vérifier

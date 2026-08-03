@@ -6,6 +6,7 @@ import { colors, spacing } from '@/config/theme';
 
 import { deriveEndOfMissionState } from './deriveEndOfMissionState';
 import { deriveMissionScreenState } from './deriveMissionScreenState';
+import { DevScreen } from './DevScreen';
 import { EndOfMissionScreen } from './EndOfMissionScreen';
 import { MissionScreen } from './MissionScreen';
 import { Txt } from '../components/ui/Txt';
@@ -20,6 +21,7 @@ export function LiveMissionScreen() {
   const [closing, setClosing] = useState(false);
   const [closed, setClosed] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
+  const [devScreenOpen, setDevScreenOpen] = useState(false);
 
   // Deliberately not a live ticker (see deriveMissionScreenState.ts) —
   // re-derived only when the underlying mission data actually changes, not
@@ -57,6 +59,14 @@ export function LiveMissionScreen() {
         </Txt>
       </View>
     );
+  }
+
+  // Sprint 019 — docs/11 "Développement" écran : gated by `__DEV__` (false
+  // in a release build) rather than an invented user role — see
+  // MissionScreen.tsx's `onMenu` prop, the only real caller of
+  // `setDevScreenOpen(true)`.
+  if (__DEV__ && devScreenOpen) {
+    return <DevScreen ctx={ctx} onClose={() => setDevScreenOpen(false)} />;
   }
 
   // Sprint 018 — no residence left to work on: show the real "Fin de
@@ -101,6 +111,7 @@ export function LiveMissionScreen() {
       // encore pour choisir un type de problème, et `problemCode` n'a aucune
       // taxonomie documentée (docs/03/docs/09/docs/07) — en inventer une ici
       // serait une règle métier non validée. Suivi ouvert, pas un oubli.
+      onMenu={__DEV__ ? () => setDevScreenOpen(true) : undefined}
     />
   );
 }
