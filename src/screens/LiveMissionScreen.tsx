@@ -9,6 +9,7 @@ import { deriveMissionScreenState } from './deriveMissionScreenState';
 import { DevScreen } from './DevScreen';
 import { EndOfMissionScreen } from './EndOfMissionScreen';
 import { MissionScreen } from './MissionScreen';
+import { NoMissionScreen } from './NoMissionScreen';
 import { Txt } from '../components/ui/Txt';
 
 // Sprint 017 (partie 1/N) — the real entry point promised since Sprint 004
@@ -84,10 +85,19 @@ export function LiveMissionScreen() {
     );
   }
 
-  // No active/problem residence and not eligible to close (no mission at
-  // all, or already closed) — the real "Aucune mission" screen (docs/11
-  // Phase 11, écrans finaux) is a separate, out-of-scope sprint; this is a
-  // minimal honest fallback, not that screen.
+  // Sprint 017 (partie 2/N) — docs/11 "Aucune mission" : no mission at all,
+  // or the current one is already COMPLETED (closeMission just succeeded,
+  // or a stale session). deriveEndOfMissionState.ts already excludes
+  // COMPLETED from its own eligibility, so this never fights with
+  // EndOfMissionScreen above for the same state.
+  if (!ctx.mission || ctx.mission.status === 'COMPLETED') {
+    return <NoMissionScreen ctx={ctx} />;
+  }
+
+  // No active/problem residence and mission not closed/absent (edge case:
+  // a loaded mission with zero MissionItems) — minimal honest fallback,
+  // not a dedicated screen (nothing in docs/11 describes this specific
+  // combination).
   if (!screenState || !targetItemId) {
     return (
       <View style={styles.fallback}>

@@ -20,6 +20,8 @@ import { createSynchronizationEngine, type SynchronizationEngine } from '@/engin
 import type { NetworkStatusProvider, SyncEngineEvent, SynchronizationState } from '@/engines/sync/types';
 import { createVoiceEngine, type VoiceEngine } from '@/engines/voice';
 import type { VoiceEngineEvent } from '@/engines/voice/types';
+import { createExpoLocationProvider, type LocationProvider } from '@/integrations/location/expoLocationProvider';
+import { createNetInfoSensor, type NetworkSensor } from '@/integrations/network/expoNetInfoProvider';
 import { fetchAssignedMission } from '@/integrations/supabase/fetchAssignedMission';
 import { createSupabaseSyncTransport } from '@/integrations/supabase/supabaseSyncTransport';
 import { createExpoSpeaker } from '@/integrations/voice/expoSpeaker';
@@ -32,13 +34,13 @@ import { createSyncOperationRepository } from '@/persistence/repositories/syncOp
 import { seedDemoMissionIfEmpty } from '@/persistence/seedDemoMission';
 import type { Db } from '@/persistence/types';
 
-// GPS position is not wired to a real sensor yet (expo-location — deferred,
-// see plans.md "Sprint 017, partie 1/N": same "logique d'abord, capteur
-// ensuite" principle already applied to every engine in this repo). The
-// engine itself IS real and instantiated below (setActiveResidence is
-// called whenever the active residence changes), it just never receives a
-// position update, so it can never truthfully report a live fix.
-export type GpsState = { available: false };
+// Sprint 017 (partie 2/N) — real `expo-location` sensor wired below
+// (`createExpoLocationProvider`). `reason` distinguishes why no live fix is
+// available (never invented — only what the provider itself can honestly
+// report) from the nominal `{available: true}` once a fix is flowing.
+export type GpsState =
+  | { available: true }
+  | { available: false; reason: 'permission_denied' | 'no_mission' | 'unavailable' };
 
 // Sync/Offline now expose their real state shapes (docs/07/docs/08) instead
 // of the Sprint 007-008 placeholders — no other component read the old
@@ -77,6 +79,10 @@ export type MissionContextValue = {
   // void like the other commands) so the screen can surface a real error
   // instead of failing silently.
   closeMission(): Promise<TransitionResult>;
+  // Sprint 017 (partie 2/N) — "Actualiser" (NoMissionScreen.tsx, docs/11
+  // "Aucune mission"). Re-checks whether a mission has since been assigned,
+  // without restarting sensors/session (see the implementation below).
+  refreshAssignment(): Promise<void>;
   // Sprint 019 — docs/11 Phase 11 "Développement" (simuler GPS/réseau, voir
   // états/file/événements/seuils, exporter les journaux). Always present in
   // the value (the data itself isn't sensitive) — access control is the
@@ -158,6 +164,11 @@ type Props = {
   // touché en test"). Default to the real integrations.
   syncTransportOverride?: () => ReturnType<typeof createSupabaseSyncTransport>;
   speakerOverride?: () => ReturnType<typeof createExpoSpeaker>;
+  // Sprint 017 (partie 2/N) — same reasoning as the overrides above: without
+  // these, a test would touch the real `expo-location`/NetInfo native
+  // modules, which don't exist under Jest.
+  locationProviderOverride?: () => LocationProvider;
+  networkSensorOverride?: () => NetworkSensor;
 };
 
 export function MissionProvider({
@@ -166,6 +177,8 @@ export function MissionProvider({
   employeeId,
   syncTransportOverride,
   speakerOverride,
+  locationProviderOverride,
+  networkSensorOverride,
 }: Props) {
   const [mission, setMission] = useState<Mission | null>(null);
   const [items, setItems] = useState<MissionItem[]>([]);
@@ -181,39 +194,47 @@ export function MissionProvider({
     since: systemClock.now().toISOString(),
     lastOnlineAt: systemClock.now().toISOString(),
   });
+  const [gpsState, setGpsState] = useState<GpsState>({ available: false, reason: 'unavailable' });
 
   const dbRef = useRef<Db | null>(null);
   const stateMachineRef = useRef<StateMachine | null>(null);
   const gpsEngineRef = useRef<GpsEngine | null>(null);
+  const locationProviderRef = useRef<LocationProvider | null>(null);
   const gpsSimulatorRef = useRef<GpsSimulator | null>(null);
   const syncEngineRef = useRef<SynchronizationEngine | null>(null);
   const offlineEngineRef = useRef<OfflineEngine | null>(null);
   const voiceEngineRef = useRef<VoiceEngine | null>(null);
 
-  // Sprint 019 — real sensor deferred (see GpsState above), same principle
-  // applied here: a simple always-online stub rather than the real NetInfo
-  // integration. Shared by the Sync and Offline engines so there is only one
-  // "not real yet" network signal in the app, not two independently invented
-  // ones. `null` override = the stub's original always-online behaviour,
-  // unchanged; the dev-only "Développement" screen (docs/11) is the only
-  // caller that ever sets it to something else.
+  // Shared by the Sync and Offline engines so there is only one network
+  // signal in the app, not two independently invented ones.
+  // `networkOverrideRef` (Sprint 019) keeps priority — the dev-only
+  // "Développement" screen must still be able to force a scenario even with
+  // a real sensor present; `null` falls through to `realNetworkStatusRef`
+  // (Sprint 017 partie 2/N, updated by the real NetInfo listener below,
+  // starts `true` until the first event arrives — same "assume online until
+  // told otherwise" default the stub always had).
   const networkOverrideRef = useRef<boolean | null>(null);
+  const realNetworkStatusRef = useRef<boolean>(true);
   const networkStatus = useMemo<NetworkStatusProvider>(
-    () => ({ isOnline: () => networkOverrideRef.current ?? true }),
+    () => ({ isOnline: () => networkOverrideRef.current ?? realNetworkStatusRef.current }),
     []
   );
 
   useEffect(() => {
     let cancelled = false;
+    // Set once `load()` starts the real GPS sensor — declared here (not
+    // inside `load()`) so the effect's cleanup below can always reach it,
+    // even though it's only assigned partway through the async function.
+    let timeoutIntervalId: ReturnType<typeof setInterval> | null = null;
 
     async function load() {
       const db = await (getDbOverride ?? getDb)();
       dbRef.current = db;
 
       // Sprint 017 (partie 1/N) — engines instantiated once per DB
-      // connection. GPS/network stay injected stubs (see above); the Sync
-      // Engine uses the real Supabase transport already built for the
-      // Sprint 013-014 follow-up.
+      // connection. The Sync Engine uses the real Supabase transport already
+      // built for the Sprint 013-014 follow-up; GPS/network sensors are
+      // wired further down (Sprint 017 partie 2/N).
       const stateMachine = createStateMachine(db, systemClock);
       stateMachineRef.current = stateMachine;
       gpsEngineRef.current = createGpsEngine({ stateMachine, clock: systemClock });
@@ -269,6 +290,37 @@ export function MissionProvider({
       };
       await sessionRepo.upsert(newSession);
 
+      // Sprint 017 (partie 2/N) — real GPS sensor, foreground only (see
+      // expoLocationProvider.ts). Only started once a mission is actually
+      // selected: tracking a position nobody will use would just be a
+      // battery cost for no documented benefit. `afterMutation` reuses the
+      // exact same reload path `dev.gps`/`reportProblem`/… already use —
+      // a real fix and a simulated one both end up calling the State
+      // Machine underneath, so the context refreshes the same way either
+      // way, only one code path to keep correct.
+      if (selectedMissionId) {
+        const locationProvider = (locationProviderOverride ?? createExpoLocationProvider)();
+        locationProviderRef.current = locationProvider;
+        const { granted } = await locationProvider.start(async (fix) => {
+          await gpsEngineRef.current?.updatePosition(fix);
+          await afterMutation(selectedMissionId);
+        });
+        if (!cancelled) {
+          setGpsState(granted ? { available: true } : { available: false, reason: 'permission_denied' });
+        }
+        // docs/04: "le moteur ne possède aucun timer propre" — same
+        // principle as every other engine in this repo, the caller must
+        // provide the periodic tick that detects a lost signal.
+        // `checkTimeout` itself is a no-op until a first real fix has
+        // arrived (see gpsEngine.ts), so it's always safe to start this
+        // even before/without permission being granted.
+        timeoutIntervalId = setInterval(() => {
+          gpsEngineRef.current?.checkTimeout(systemClock.now());
+        }, 5000);
+      } else if (!cancelled) {
+        setGpsState({ available: false, reason: 'no_mission' });
+      }
+
       await offlineEngineRef.current.checkConnectivity();
       await syncEngineRef.current.recoverOnStartup();
       await syncEngineRef.current.runSyncCycle();
@@ -286,8 +338,26 @@ export function MissionProvider({
     load();
     return () => {
       cancelled = true;
+      locationProviderRef.current?.stop();
+      if (timeoutIntervalId) clearInterval(timeoutIntervalId);
     };
-  }, [getDbOverride, employeeId, syncTransportOverride, speakerOverride, networkStatus]);
+    // `afterMutation` is a new function identity every render (it's declared
+    // in the component body, not memoized) but only ever closes over refs
+    // and state setters, never over `mission`/`items` themselves — including
+    // it here would restart GPS tracking (and the whole load effect) on
+    // every unrelated re-render instead of once per DB connection.
+  }, [getDbOverride, employeeId, syncTransportOverride, speakerOverride, locationProviderOverride, networkStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sprint 017 (partie 2/N) — real network sensor. Independent of the
+  // mission-loading effect above (network state is meaningful even before a
+  // mission is selected) — started once per provider identity, not
+  // re-subscribed on every render.
+  useEffect(() => {
+    const sensor = (networkSensorOverride ?? createNetInfoSensor)();
+    return sensor.start((online) => {
+      realNetworkStatusRef.current = online;
+    });
+  }, [networkSensorOverride]);
 
   const { activeMissionItem, nextMissionItems } = useMemo(() => deriveActiveAndNext(items), [items]);
 
@@ -389,6 +459,35 @@ export function MissionProvider({
       await afterMutation(mission.id);
     }
     return result;
+  }
+
+  // Sprint 017 (partie 2/N) — "Actualiser" button on NoMissionScreen.tsx
+  // (docs/11 "Aucune mission"). Re-runs the same assignment lookup the
+  // mount effect does (`fetchAssignedMission` if authenticated, else keep
+  // whatever's already selected) — does NOT restart GPS tracking/the sync
+  // recovery sequence, this is a lightweight "did a new mission appear?"
+  // check, not a full reconnect.
+  async function refreshAssignment(): Promise<void> {
+    const db = dbRef.current;
+    if (!db) return;
+    setLoading(true);
+    let assigned: Awaited<ReturnType<typeof fetchAssignedMission>> = null;
+    if (employeeId) {
+      try {
+        assigned = await fetchAssignedMission(employeeId, db, systemClock);
+      } catch {
+        assigned = null;
+      }
+    }
+    const missionRepo = createMissionRepository(db);
+    const itemRepo = createMissionItemRepository(db);
+    const [missions, missionItems] = await Promise.all([missionRepo.getAll(), itemRepo.getAll()]);
+    const selectedMissionId = assigned?.id ?? mission?.id ?? missions[0]?.id ?? null;
+    const selectedMission = missions.find((m) => m.id === selectedMissionId) ?? null;
+    const selectedItems = selectedMissionId ? missionItems.filter((item) => item.missionId === selectedMissionId) : [];
+    setMission(selectedMission);
+    setItems(selectedItems);
+    setLoading(false);
   }
 
   // Sprint 019 — see DevTools/DevGpsSimulator above for the "why" of each
@@ -495,7 +594,7 @@ export function MissionProvider({
     activeMissionItem,
     nextMissionItems,
     allMissionItems: items,
-    gpsState: { available: false },
+    gpsState,
     synchronizationState,
     offlineState,
     session,
@@ -504,6 +603,7 @@ export function MissionProvider({
     skipItem,
     dev,
     closeMission,
+    refreshAssignment,
   };
 
   return <MissionReactContext.Provider value={value}>{children}</MissionReactContext.Provider>;

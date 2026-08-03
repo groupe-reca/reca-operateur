@@ -10,6 +10,104 @@
 
 ## Archivé
 
+### ✅ Sprint 017 (partie 2/N) — Capteurs réels + écran « Aucune mission » (branche
+`sprint-017-partie-2-capteurs-reels`, 2026-08-03)
+
+**Objectif** : dernier gros morceau différé depuis le Sprint 011-012 (« logique d'abord, capteur
+ensuite », répété à chaque moteur) — brancher `expo-location` (GPS) et un vrai signal réseau
+(`@react-native-community/netinfo`) derrière les interfaces déjà injectées (`GpsPosition`,
+`NetworkStatusProvider`), sans toucher à la logique métier des moteurs (déjà testée). Livre aussi
+l'écran « Aucune mission » (`docs/11` Écrans finaux), qui devient le foyer naturel de l'état
+« mission fermée/absente » actuellement affiché par le repli générique de `LiveMissionScreen.tsx`.
+**Choisi comme prochain sprint avec le propriétaire** (seule alternative restante de Phase 11 non
+couverte par les Sprints 017-1/018/019).
+
+**Portée** : capteur GPS foreground uniquement (`expo-location` premier plan — aucune exigence de
+suivi arrière-plan documentée dans `docs/04`, l'inventer serait hors mandat et complique
+significativement les permissions Android/Play Store) ; réseau = signal système
+(`NetInfo.isConnected`/`isInternetReachable`), pas d'accessibilité serveur réelle
+(`SERVER_UNAVAILABLE`/`AUTHENTICATION_DEGRADED` restent hors scope, décision déjà actée au
+Sprint 015).
+
+**Design** :
+1. **`expo-location`** (`npx expo install expo-location`) — nouveau module natif, plugin
+   `app.json` avec la chaîne de permission `locationWhenInUsePermission` (FR, cohérent avec le
+   reste de l'UI). Même cycle que chaque dépendance native précédente (Voice/gesture-handler/
+   async-storage) : `expo prebuild` + `gradlew installDebug` sur le laptop du propriétaire, **non
+   vérifiable depuis ce VPS**.
+2. **`src/integrations/location/expoLocationProvider.ts`** (mirror `expoSpeaker.ts`) : demande
+   `Location.requestForegroundPermissionsAsync()`, puis `Location.watchPositionAsync` (accuracy
+   `Balanced`, `timeInterval`/`distanceInterval` — **valeurs non chiffrées par `docs/04`, marquées
+   `@assumption`** comme `maxAccuracyMeters`/`gpsLostTimeoutSeconds` l'étaient déjà) mappé vers
+   `GpsPosition` (`src/engines/gps/types.ts`, déjà le contrat attendu par le moteur — aucun
+   changement de type). Permission refusée → callback d'erreur, jamais un crash ; le moteur GPS
+   reste simplement sans position (comportement déjà supporté, c'était l'état par défaut jusqu'ici).
+3. **`src/integrations/network/expoNetInfoProvider.ts`** — `@react-native-community/netinfo`
+   (`npx expo install`), écoute `NetInfo.addEventListener`, expose un `NetworkStatusProvider`
+   (`isOnline()`) adossé à une ref mise à jour par l'écouteur.
+4. **`MissionContext.tsx`** : `networkStatus` (Sprint 019, ref mutable) devient
+   `networkOverrideRef.current ?? realNetworkStatusRef.current ?? true` — **le mode dev
+   (`dev.setNetworkOverride`) garde la priorité**, rien à retirer du Sprint 019. Le vrai fournisseur
+   GPS pousse chaque fix dans `gpsEngineRef.current.updatePosition()` puis appelle `afterMutation`
+   (même flux que `dev.gps`, une seule voie de mise à jour du contexte après un mouvement GPS,
+   qu'il soit réel ou simulé). Un intervalle (`setInterval`, nettoyé au démontage) appelle
+   `gpsEngine.checkTimeout(clock.now())` périodiquement — le moteur n'a aucun timer propre
+   (`docs/04`), c'est à l'appelant de le fournir, exactement comme le Sync/Offline Engine
+   attendaient déjà un déclencheur externe. `gpsState` (actuellement `{available: false}` en dur)
+   reflète enfin la vraie disponibilité (`{available: true}` / `{available: false, reason}`).
+   `getDbOverride`/`syncTransportOverride`/`speakerOverride` ont déjà établi le patron : nouveaux
+   `locationProviderOverride`/`networkSensorOverride` injectables pour que
+   `tests/missionContext.test.tsx` ne touche jamais `expo-location`/`NetInfo` réels.
+5. **`NoMissionScreen.tsx`** (nouveau, `docs/11` Écran « Aucune mission ») : logo officiel,
+   utilisateur (`useAuth().session.user.email`, `AuthContext` déjà accessible partout dans l'arbre),
+   état réseau (`ctx.offlineState.status`), message clair, bouton Actualiser (nouvelle commande
+   `MissionContext.refreshAssignment()` — rejoue `fetchAssignedMission` + rechargement, même flux
+   que le montage), bouton Déconnexion (`useAuth().logout()`). `LiveMissionScreen.tsx` le rend
+   quand `!ctx.mission` ou `ctx.mission.status === 'COMPLETED'` — remplace le repli générique
+   texte pour ce cas précis (le repli générique existant reste pour l'edge case résiduel : mission
+   chargée, pas fermée, mais sans aucun `MissionItem`).
+
+**Hors scope, explicitement différé** : suivi GPS arrière-plan ; `SERVER_UNAVAILABLE`/
+`AUTHENTICATION_DEGRADED` (ping serveur réel, toujours différé depuis le Sprint 015) ; UI dédiée
+« capteur GPS indisponible » (aucune maquette/exigence documentée au-delà de l'état interne) ;
+écrans Mission active/Paramètres/Mode hors ligne (Phase 11, restent hors scope).
+
+**Vérification** : tests purs si extraction possible (mapping `Location.LocationObject` →
+`GpsPosition`) ; test d'intégration (`missionContext.test.tsx` — provider GPS/réseau injecté en
+faux, vérifie que `gpsState`/`offlineState` reflètent le fournisseur réel plutôt que le stub) ;
+`tsc`/`eslint`/`jest` verts ; `expo-doctor` ; **non vérifiable sur device depuis ce VPS** (nouveau
+module natif, nécessite le cycle prebuild/Android Studio du propriétaire) — noté comme suivi ouvert
+comme à chaque sprint natif précédent.
+
+**Réalisé conformément au plan, du premier coup pour la logique — la seule surprise a été dans les
+tests, pas dans le design** :
+- Points 1-5 implémentés tels que décrits : `expo-location`/`@react-native-community/netinfo`
+  ajoutés (`npx expo install`) + plugin `app.json` ; `expoLocationProvider.ts`/
+  `expoNetInfoProvider.ts` (mirror `expoSpeaker.ts`) ; `MissionContext.tsx` — `networkStatus`
+  retombe sur `realNetworkStatusRef` derrière l'override dev, chaque fix réel appelle
+  `gpsEngine.updatePosition()` + `afterMutation`, `setInterval` pour `checkTimeout`,
+  `locationProviderOverride`/`networkSensorOverride` injectables, `gpsState` reflète enfin la vraie
+  disponibilité ; `NoMissionScreen.tsx` (logo/utilisateur/état réseau/message/Actualiser/
+  Déconnexion) + nouvelle commande `MissionContext.refreshAssignment()` ; `LiveMissionScreen.tsx`
+  le rend quand `!mission` ou `mission.status === 'COMPLETED'`.
+- **Test d'intégration existants cassés, corrigés** : les 8 tests `missionContext.test.tsx`
+  préexistants instanciaient `MissionProvider` sans `locationProviderOverride`/
+  `networkSensorOverride` — dès que ces branches de code existent, le montage appelle les vrais
+  `expo-location`/`NetInfo`, qui plantent sous Jest (modules natifs absents). Fixé en ajoutant des
+  fournisseurs factices par défaut à `renderMissionContext()` (même règle « jamais de vrai
+  capteur/réseau touché en test » que chaque override précédent) ; 3 nouveaux tests dédiés
+  (fournisseur GPS contrôlable poussant de vrais fix, `gpsState` `permission_denied`, écouteur
+  réseau réel indépendant du mode dev) confirment le nouveau chemin sans jamais appeler les modules
+  natifs.
+- **Vérification** : `tsc --noEmit`/`eslint .`/`npx jest` tous verts (149/149 tests, dont 3
+  nouveaux tests d'intégration capteurs dans `missionContext.test.tsx` + 4 nouveaux
+  `tests/noMissionScreen.test.tsx`), `npx expo-doctor` 20/20. **Non vérifié sur device réel** :
+  2 nouveaux modules natifs, nécessite le cycle `expo prebuild`/`gradlew installDebug` du
+  propriétaire — suivi ouvert, même pattern que chaque sprint natif précédent (Voice/
+  gesture-handler/async-storage).
+
+## Archivé
+
 ### ✅ Sprint 019 — Mode développement (branche `sprint-019-mode-developpement`, 2026-08-03)
 
 **Objectif** (`docs/11-Roadmap.md` Phase 11, écran « Développement ») : simuler GPS/réseau, voir
