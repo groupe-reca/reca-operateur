@@ -31,6 +31,12 @@
       "expo-asset",
       "@rnmapbox/maps",
       "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "RÉCA Opérateur utilise votre position pour suivre votre progression sur la tournée."
+        }
+      ],
       "./plugins/withGradleJdk17",
       "./plugins/withDevSingleAbi"
     ]

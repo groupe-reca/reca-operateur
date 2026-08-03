@@ -312,9 +312,9 @@
   app sans régression sur device (TECNO KL4) après le nouveau build natif.
 - [x] **Sprint 017-019 — Auth, mission assignée, fin de mission, mode développement** (Phase 11,
   les 4 sujets nommés par ce titre). **Reste de la Phase 11 non couvert par ce titre** (donc pas
-  marqué ici) : écrans « Aucune mission »/« Mission active »/« Paramètres »/« Mode hors ligne »,
-  capteurs GPS/réseau réels (`expo-location`/NetInfo) — tous documentés comme suivis ouverts dans
-  les entrées Sprint 017/018/019 ci-dessous.
+  marqué ici) : écrans « Mission active »/« Paramètres »/« Mode hors ligne » — voir Sprint 017
+  partie 2/N ci-dessous pour les capteurs GPS/réseau réels et l'écran « Aucune mission », livrés
+  après ce titre.
   - [x] **Sprint 017 (partie 1/N) — Câblage réel de MissionContext** (branche
     `sprint-017-mission-context-wiring`, 2026-08-02, PR :
     https://github.com/groupe-reca/reca-operateur/pull/1). Découpage validé avec le propriétaire : cette
@@ -402,6 +402,41 @@
     `tests/devScreen.test.tsx`)/`expo-doctor` (20/20). **Non vérifié sur device** : aucun nouveau
     build natif requis (aucune dépendance native ajoutée), mais pas testé physiquement sur
     l'appareil cette passe — suivi ouvert, même pattern que les Sprints 017/018.
+  - [x] **Sprint 017 (partie 2/N) — Capteurs réels + écran « Aucune mission »** (branche
+    `sprint-017-partie-2-capteurs-reels`, 2026-08-03). Dernier gros morceau différé depuis le
+    Sprint 011-012 (« logique d'abord, capteur ensuite ») — choisi comme prochain sprint avec le
+    propriétaire (seule alternative restante de la Phase 11 non couverte par 017-1/018/019).
+    **`expo-location`** (foreground uniquement — aucune exigence de suivi arrière-plan documentée
+    par `docs/04`, l'inventer aurait complexifié les permissions Android sans gain documenté) +
+    **`@react-native-community/netinfo`** ajoutés, plugin `app.json` avec la chaîne de permission
+    FR. `src/integrations/location/expoLocationProvider.ts` (mirror `expoSpeaker.ts`) — demande
+    `requestForegroundPermissionsAsync`, `watchPositionAsync` (`timeInterval`/`distanceInterval`
+    non chiffrés par `docs/04`, marqués `@assumption` comme `maxAccuracyMeters`/
+    `gpsLostTimeoutSeconds` l'étaient déjà) mappé vers `GpsPosition`, aucun nouveau type.
+    `src/integrations/network/expoNetInfoProvider.ts` — `NetInfo.addEventListener` combine
+    `isConnected`/`isInternetReachable` (`docs/08` : « ne doit pas se fier uniquement à l'icône
+    réseau »), reste un signal *appareil*, pas une accessibilité serveur réelle
+    (`SERVER_UNAVAILABLE`/`AUTHENTICATION_DEGRADED` restent hors scope, Sprint 015). **`MissionContext`** :
+    `networkStatus.isOnline()` devient `networkOverrideRef ?? realNetworkStatusRef ?? true` — le
+    mode dev (Sprint 019) garde la priorité, rien retiré. Chaque fix réel pousse dans
+    `gpsEngine.updatePosition()` puis `afterMutation` (même chemin que `dev.gps`, un seul code de
+    rechargement qu'un mouvement soit réel ou simulé). `setInterval` (nettoyé au démontage) appelle
+    `gpsEngine.checkTimeout()` — le moteur n'a aucun timer propre (`docs/04`). `gpsState` reflète
+    enfin la vraie disponibilité (`{available:true}` / `{available:false, reason}` — jamais
+    `{available:false}` figé comme avant). `locationProviderOverride`/`networkSensorOverride`
+    injectables (tests). **`NoMissionScreen.tsx`** (nouveau, `docs/11` Écran « Aucune mission ») :
+    logo, utilisateur (`useAuth()`), état réseau, message clair, bouton Actualiser (nouvelle
+    commande `MissionContext.refreshAssignment()` — relance `fetchAssignedMission` sans redémarrer
+    capteurs/session), bouton Déconnexion. `LiveMissionScreen.tsx` le rend quand `!mission` ou
+    `mission.status === 'COMPLETED'` (remplace le repli générique texte pour ce cas précis).
+    **Hors scope, différé** : suivi GPS arrière-plan, `SERVER_UNAVAILABLE`/
+    `AUTHENTICATION_DEGRADED`, UI dédiée « capteur indisponible » (aucune exigence documentée),
+    écrans Mission active/Paramètres/Mode hors ligne. Vérifié : `tsc`/`eslint`/`jest` verts
+    (149/149, 17 suites, dont 3 nouveaux tests d'intégration capteurs réels dans
+    `tests/missionContext.test.tsx` + 4 nouveaux `tests/noMissionScreen.test.tsx`)/`expo-doctor`
+    (20/20). **Non vérifiable sur device depuis ce VPS** : 2 nouveaux modules natifs, nécessite le
+    cycle `expo prebuild`/Android Studio du propriétaire — suivi ouvert, même pattern que chaque
+    sprint ayant ajouté une dépendance native (Voice/gesture-handler/async-storage).
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 
 ## À vérifier

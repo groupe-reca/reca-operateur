@@ -10,8 +10,9 @@
 - `app.json` — config Expo (nom « RÉCA Opérateur », portrait, thème sombre, `scheme`,
   ids `ca.groupereca.recaoperateur`, icônes, plugins dont `@rnmapbox/maps` depuis Sprint 005-006 —
   le jeton de téléchargement natif n'y figure **pas**, lu directement par Gradle via
-  `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`, voir `.env.example`), `./plugins/withGradleJdk17` (2026-08-02),
-  `./plugins/withDevSingleAbi` (2026-08-02).
+  `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`, voir `.env.example`), `expo-location` (2026-08-03, Sprint 017
+  partie 2/N — chaîne de permission FR `locationWhenInUsePermission`, foreground uniquement),
+  `./plugins/withGradleJdk17` (2026-08-02), `./plugins/withDevSingleAbi` (2026-08-02).
 - `plugins/withGradleJdk17.js` (2026-08-02) — plugin de config Expo, réécrit
   `android/gradle.properties`/`gradle-daemon-jvm.properties` à chaque `expo prebuild` pour forcer
   Gradle à utiliser le JDK 17 de `JAVA_HOME` (contourne un bug AGP/Prefab avec JDK 22+, voir
@@ -63,17 +64,19 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - `src/app/` — composition racine (providers, thème, montage). Vide.
 - `src/screens/`
   - `LiveMissionScreen.tsx` (Sprint 017 partie 1/N, 2026-08-02, **nouveau point d'entrée réel** ;
-    étendu Sprints 018/019) — `useMissionContext()` → `deriveMissionScreenState(ctx, new Date())`
-    (mémoïsé sur les champs utiles, pas sur `ctx` entier) → `MissionScreen`. Essaie d'abord
-    `deriveEndOfMissionState(ctx, new Date())` (Sprint 018) : non nul → rend `EndOfMissionScreen`
-    (mission éligible à la fermeture) au lieu du repli générique. Si `__DEV__ && devScreenOpen`
-    (Sprint 019, état local mis à `true` via `onMenu` du header — jamais en build release), rend
-    `DevScreen` à la place de tout le reste, priorité la plus haute. Repli minimal texte pendant
-    `loading` ou quand aucune résidence active/problème/fin de mission n'existe (le vrai écran
-    « Aucune mission », `docs/11` Phase 11, reste hors scope). Câble `onResolveProblem`/`onSkipItem`
-    aux commandes réelles du contexte ; **`onReportProblem` volontairement sans effet** — aucune
-    UI/taxonomie de `problemCode` documentée, voir `memory.md`. `handleCloseMission` (Sprint 018)
-    gère `closing`/`closed`/`closeError` local, appelle `ctx.closeMission()`.
+    étendu Sprints 018/019/017-partie-2) — `useMissionContext()` → `deriveMissionScreenState(ctx,
+    new Date())` (mémoïsé sur les champs utiles, pas sur `ctx` entier) → `MissionScreen`. Ordre de
+    priorité : `loading` → `__DEV__ && devScreenOpen` (Sprint 019, `DevScreen`, état local mis à
+    `true` via `onMenu` du header, jamais en build release) → `deriveEndOfMissionState(ctx, new
+    Date())` non nul (Sprint 018, `EndOfMissionScreen` — mission éligible à la fermeture) →
+    `!mission || mission.status === 'COMPLETED'` (Sprint 017 partie 2/N, `NoMissionScreen` — vrai
+    écran « Aucune mission » `docs/11`, remplace l'ancien repli générique pour ce cas précis) →
+    `screenState`/`MissionScreen` → repli minimal texte résiduel (mission chargée, pas fermée, mais
+    sans aucun `MissionItem` — combinaison non décrite par `docs/11`). Câble `onResolveProblem`/
+    `onSkipItem` aux commandes réelles du contexte ; **`onReportProblem` volontairement sans
+    effet** — aucune UI/taxonomie de `problemCode` documentée, voir `memory.md`.
+    `handleCloseMission` (Sprint 018) gère `closing`/`closed`/`closeError` local, appelle
+    `ctx.closeMission()`.
   - `deriveMissionScreenState.ts` (Sprint 017 partie 1/N, pur, testé
     `tests/deriveMissionScreenState.test.ts`) — traduit `MissionContextValue` (mission/résidence
     active/items/sync/offline) vers `MissionScreenState` sans toucher `MissionScreen`. Cherche un
@@ -104,6 +107,13 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     Seuils (`dev.thresholds`)/File (`dev.getSyncQueue()`)/Événements (`dev.getEvents()`)/Historique
     des transitions (`dev.getTransitions()`) + bouton Exporter (`dev.exportLogs()` →
     `Share.share()`, API core React Native).
+  - `NoMissionScreen.tsx` (Sprint 017 partie 2/N, testé `tests/noMissionScreen.test.tsx`) — écran
+    « Aucune mission » (`docs/11` Écrans finaux) : logo officiel, utilisateur (`useAuth()` lu
+    directement — `AuthProvider` enveloppe déjà tout l'arbre, aucun threading de prop nécessaire),
+    état réseau (`ctx.offlineState.status`), message clair, bouton Actualiser
+    (`ctx.refreshAssignment()`), bouton Déconnexion (`useAuth().logout()`, masqué si non
+    authentifié). « Ne doit pas ressembler à un tableau de bord administratif » — pas de
+    liste/tableau, juste ce que `docs/11` demande.
   - `MissionScreen.tsx` — **écran produit**, désormais **piloté par les données**
     (Sprint 004) : accepte une prop `state: MissionScreenState` + 3 callbacks optionnels
     (`onReportProblem`/`onResolveProblem`/`onSkipItem`, Sprint 017 partie 1/N, no-op par défaut) +
@@ -232,28 +242,38 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     intrinsèquement basée sur des composants).
 - `src/context/`
   - `MissionContext.tsx` (Sprint 007-008, réécrit Sprint 017 partie 1/N — 2026-08-02 ; étendu
-    Sprints 018/019) — `MissionProvider`/`useMissionContext()` : au montage, instancie les 5
-    moteurs réels (State Machine/GPS/Sync/Offline/Voice, refs stables) puis charge (migrations →
-    **`fetchAssignedMission` si `employeeId` fourni, sinon/en repli seed démo si vide** → mission
-    sélectionnée sans ambiguïté via `assigned?.id ?? missions[0]?.id` → session ouverte →
+    Sprints 018/019/017-partie-2) — `MissionProvider`/`useMissionContext()` : au montage,
+    instancie les 5 moteurs réels (State Machine/GPS/Sync/Offline/Voice, refs stables) puis charge
+    (migrations → **`fetchAssignedMission` si `employeeId` fourni, sinon/en repli seed démo si
+    vide** → mission sélectionnée sans ambiguïté via `assigned?.id ?? missions[0]?.id` → session
+    ouverte → démarre le capteur GPS réel si une mission existe (Sprint 017 partie 2/N) →
     `offlineEngine.checkConnectivity()`/`syncEngine.recoverOnStartup()`/`runSyncCycle()`). Expose
-    `mission`/`activeMissionItem`/`nextMissionItems`/`allMissionItems`/`gpsState`
-    (`{available: false}`, capteur réel différé)/`synchronizationState`/`offlineState` (ces 2
-    derniers **réels**, plus des placeholders) + les commandes `reportProblem`/`resolveProblem`/
-    `skipItem`/**`closeMission`** (Sprint 018 : `requestMissionComplete`, puis — contrairement aux
-    3 autres — recharge aussi `mission` via `missionRepo.getById`, pas seulement les items, sinon
-    l'écran ne verrait jamais son propre succès ; retourne le `TransitionResult` brut pour que
-    l'écran affiche une vraie erreur) + **`dev`** (Sprint 019, `DevTools` — `gps` enveloppe
-    `createGpsSimulator` autour de `gpsEngineRef` avec rechargement `afterMutation` intégré ;
-    `thresholds` = `DEFAULT_GPS_THRESHOLDS` telle quelle, jamais overridée ; `getStates`/`getEvents`
-    agrègent ce que les 4 moteurs exposent déjà ; `getSyncQueue`/`getTransitions` lisent les
-    repositories directement ; `setNetworkOverride` pilote `networkOverrideRef` — remplace
-    l'ancienne constante figée `STUB_NETWORK_STATUS`, toujours partagée Sync/Offline ; `exportLogs`
-    assemble tout en JSON pour `Share.share()`). `deriveActiveAndNext` (exporté, pur, testé) :
-    résidence active + suivantes, indépendant de React/DB — utilise `isActiveItemState` du State
-    Machine (Sprint 009-010) plutôt qu'une constante dupliquée. `getDbOverride`/
-    `syncTransportOverride`/`speakerOverride` injectables (tests uniquement — la règle « jamais de
-    vrai réseau touché en test » s'applique aussi au Sync/Voice ici, voir
+    `mission`/`activeMissionItem`/`nextMissionItems`/`allMissionItems`/`gpsState` (**réel** depuis
+    le Sprint 017 partie 2/N — `{available:true}` ou `{available:false, reason}`, jamais figé)/
+    `synchronizationState`/`offlineState` (réels depuis leurs sprints respectifs) + les commandes
+    `reportProblem`/`resolveProblem`/`skipItem`/**`closeMission`** (Sprint 018 : voir plus bas) +
+    **`refreshAssignment`** (Sprint 017 partie 2/N — relance `fetchAssignedMission` sans redémarrer
+    capteurs/session, appelée par `NoMissionScreen`) + **`dev`** (Sprint 019, `DevTools` — `gps`
+    enveloppe `createGpsSimulator` autour de `gpsEngineRef` avec rechargement `afterMutation`
+    intégré ; `thresholds` = `DEFAULT_GPS_THRESHOLDS` telle quelle, jamais overridée ; `getStates`/
+    `getEvents` agrègent ce que les 4 moteurs exposent déjà ; `getSyncQueue`/`getTransitions`
+    lisent les repositories directement ; `setNetworkOverride` pilote `networkOverrideRef`, garde
+    priorité sur le signal réseau réel ; `exportLogs` assemble tout en JSON pour `Share.share()`).
+    `closeMission` : `requestMissionComplete`, puis — contrairement aux autres commandes — recharge
+    aussi `mission` via `missionRepo.getById`, pas seulement les items, sinon l'écran ne verrait
+    jamais son propre succès ; retourne le `TransitionResult` brut. **Réseau** (Sprint 017 partie
+    2/N) : `networkStatus.isOnline()` = `networkOverrideRef.current ?? realNetworkStatusRef.current`
+    — `realNetworkStatusRef` mis à jour par `createNetInfoSensor()` (écouteur indépendant, propre
+    `useEffect`), remplace l'ancienne constante figée `STUB_NETWORK_STATUS`, toujours partagée
+    Sync/Offline. **GPS réel** : chaque fix poussé par `createExpoLocationProvider()` appelle
+    `gpsEngine.updatePosition()` puis `afterMutation` — **même chemin** que `dev.gps` (un seul code
+    de rechargement, réel ou simulé) ; `setInterval` (nettoyé au démontage) appelle
+    `gpsEngine.checkTimeout()` (le moteur n'a aucun timer propre, `docs/04`).
+    `deriveActiveAndNext` (exporté, pur, testé) : résidence active + suivantes, indépendant de
+    React/DB — utilise `isActiveItemState` du State Machine (Sprint 009-010) plutôt qu'une
+    constante dupliquée. `getDbOverride`/`syncTransportOverride`/`speakerOverride`/
+    `locationProviderOverride`/`networkSensorOverride` injectables (tests uniquement — la règle
+    « jamais de vrai réseau/capteur touché en test » s'applique à tous, voir
     `tests/missionContext.test.tsx`).
   - `AuthContext.tsx` (2026-08-02) — `AuthProvider`/`useAuth()` : session Supabase Auth
     (email/mot de passe), résout `employeeId` (`employees.user_id = auth.uid()`) une fois par
@@ -294,6 +314,16 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     → toute voix française → défaut système, jamais inventée ; `speak()` résout sur fin naturelle
     **ou** arrêt, requis pour que `stop()` débloque proprement le moteur). Seul endroit hors ce
     fichier qui importe `expo-speech` directement.
+  - `location/expoLocationProvider.ts` (Sprint 017 partie 2/N, 2026-08-03, mirror `expoSpeaker.ts`)
+    — seul endroit qui importe `expo-location` directement. `createExpoLocationProvider()` :
+    `requestForegroundPermissionsAsync` puis `watchPositionAsync` (`timeInterval`/
+    `distanceInterval` non chiffrés par `docs/04`, `@assumption`) mappé vers `GpsPosition`
+    (`src/engines/gps/types.ts`, aucun nouveau type). Foreground uniquement, permission refusée →
+    `{granted: false}`, jamais un crash.
+  - `network/expoNetInfoProvider.ts` (Sprint 017 partie 2/N, 2026-08-03) — seul endroit qui importe
+    `@react-native-community/netinfo` directement. `createNetInfoSensor()` : combine
+    `isConnected`/`isInternetReachable` (`docs/08` « ne doit pas se fier uniquement à l'icône
+    réseau ») — signal *appareil*, pas d'accessibilité serveur réelle.
 - `src/services/` — orchestration (Authentication, Mission Loader…). Vide.
 - `src/hooks/` — hooks React minces (adaptateurs de moteurs/contexte). Vide.
 - `src/types/`
@@ -384,22 +414,27 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   s'il ne peut pas être `activeMissionItem`, priorité PROBLEM sur un item actif si les deux
   existent, `offline` présent seulement hors `ONLINE`, résidences carte plafonnées à 5 en filtrant
   celles sans coordonnées.
-- `tests/missionContext.test.tsx` (Sprint 017 partie 1/N, 2026-08-02 ; étendu Sprints 018/019) —
-  8 tests d'intégration réelle (`MissionProvider` sur un faux `Db`/transport Sync/`Speaker`
-  injectés — jamais de vrai réseau/synthèse, voir `getDbOverride`/`syncTransportOverride`/
-  `speakerOverride`) : chargement de la mission de démo (premier item EN_ROUTE actif),
-  `reportProblem` → `PROBLEM` + `activeMissionItem` redevient `null`, `resolveProblem` → retour à
-  un état actif, `skipItem` → `SKIPPED` + opération de sync mise en file, `closeMission` refusé
-  tant qu'un item `WAITING`/actif subsiste, `closeMission` réussit une fois tous les items résolus
-  (`SKIPPED` autorisé) — simule le `requestMissionStart` READY→IN_PROGRESS directement via une
-  seconde instance de State Machine sur le même faux `Db` plutôt que d'exposer une commande de
-  contexte sans appelant réel (le « démarrer » de l'écran Mission active, `docs/11`, reste hors
-  scope ; une vraie mission Supabase arrive déjà `IN_PROGRESS`, voir `fetchAssignedMission.ts`),
-  `dev.setNetworkOverride(false)`/`(null)` force `offlineState` OFFLINE puis RECOVERING,
-  `dev.gps.moveTo`/`advanceTime` déclenchent une vraie transition EN_ROUTE→APPROACHING via le State
-  Machine réel (écrit d'abord les coordonnées de l'item actif dans le faux `Db`, la mission de démo
-  n'en a pas — voir `memory.md`). Mutations enveloppées dans `act()` (State Machine → contexte →
-  re-render, comme tout hook React testé).
+- `tests/missionContext.test.tsx` (Sprint 017 partie 1/N, 2026-08-02 ; étendu Sprints
+  018/019/017-partie-2) — 11 tests d'intégration réelle (`MissionProvider` sur un faux `Db`/
+  transport Sync/`Speaker`/`LocationProvider`/`NetworkSensor` injectés — jamais de vrai réseau/
+  synthèse/capteur, voir `getDbOverride`/`syncTransportOverride`/`speakerOverride`/
+  `locationProviderOverride`/`networkSensorOverride`) : chargement de la mission de démo (premier
+  item EN_ROUTE actif), `reportProblem` → `PROBLEM` + `activeMissionItem` redevient `null`,
+  `resolveProblem` → retour à un état actif, `skipItem` → `SKIPPED` + opération de sync mise en
+  file, `closeMission` refusé tant qu'un item `WAITING`/actif subsiste, `closeMission` réussit une
+  fois tous les items résolus (`SKIPPED` autorisé) — simule le `requestMissionStart`
+  READY→IN_PROGRESS directement via une seconde instance de State Machine sur le même faux `Db`
+  plutôt que d'exposer une commande de contexte sans appelant réel (le « démarrer » de l'écran
+  Mission active, `docs/11`, reste hors scope ; une vraie mission Supabase arrive déjà
+  `IN_PROGRESS`, voir `fetchAssignedMission.ts`), `dev.setNetworkOverride(false)`/`(null)` force
+  `offlineState` OFFLINE puis RECOVERING, `dev.gps.moveTo`/`advanceTime` déclenchent une vraie
+  transition EN_ROUTE→APPROACHING via le State Machine réel (écrit d'abord les coordonnées de
+  l'item actif dans le faux `Db`, la mission de démo n'en a pas — voir `memory.md`), **un vrai
+  fournisseur GPS contrôlable** (`locationProviderOverride`) pousse des fix qui déclenchent la même
+  transition par le chemin capteur réel (`gpsState` reflète `{available:true}`), `gpsState`
+  `permission_denied` quand le fournisseur refuse, **un écouteur réseau réel** (indépendant du mode
+  dev) met à jour `realNetworkStatusRef`, `dev.setNetworkOverride(null)` retombe dessus. Mutations
+  enveloppées dans `act()` (State Machine → contexte → re-render, comme tout hook React testé).
 - `tests/deriveEndOfMissionState.test.ts` (Sprint 018, 2026-08-02) — 7 tests purs : `null` sans
   mission, `null` mission déjà `COMPLETED`, `null` tant qu'un item `WAITING` ou actif subsiste,
   éligible avec un item `PROBLEM`/`SKIPPED` restant (n'empêche pas la fermeture), décompte/durée/
@@ -409,6 +444,10 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   `dev.thresholds`, message honnête « Aucune résidence à simuler » sans coordonnées, bouton
   « Fermer » appelle `onClose`, bouton « Aller à la cible » appelle `dev.gps.moveTo` avec les
   coordonnées de la résidence cible une fois disponible.
+- `tests/noMissionScreen.test.tsx` (Sprint 017 partie 2/N, 2026-08-03) — 4 tests de rendu
+  (`useAuth()` mocké via `jest.mock('@/context/AuthContext')`, `ctx` factice) : affiche
+  l'utilisateur connecté/l'état réseau/le message clair, « Actualiser » appelle
+  `ctx.refreshAssignment()`, « Déconnexion » appelle `auth.logout()`, masqué quand non authentifié.
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)
@@ -435,4 +474,7 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   (persistance de session — mock Jest requis, voir `memory.md`), `react-native-url-polyfill`
   (requis par le SDK Supabase en environnement RN, importé en side-effect dans
   `supabaseClient.ts`). Même projet Supabase que RECA App.
-- À venir : TTS.
+- **Capteurs réels (Sprint 017 partie 2/N, 2026-08-03)** : `expo-location` (GPS foreground,
+  permission `locationWhenInUsePermission` dans `app.json`), `@react-native-community/netinfo`
+  (réseau appareil). Nouveaux modules natifs — nécessitent `expo prebuild`/`gradlew installDebug`,
+  non vérifiables depuis ce VPS.

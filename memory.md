@@ -1123,6 +1123,44 @@
   comportement d'origine (toujours en ligne) — jamais un changement silencieux de comportement pour
   le reste de l'app quand le mode dev n'est pas utilisé.
 
+## Sprint 017 (partie 2/N) — Capteurs réels + écran « Aucune mission » (2026-08-03)
+
+- **Choisi comme prochain sprint avec le propriétaire** : dernier gros morceau différé depuis le
+  Sprint 011-012 (« logique d'abord, capteur ensuite », répété à chaque moteur) — seule pièce de
+  Phase 11 restante non couverte par les Sprints 017-1/018/019.
+- **Portée volontairement réduite, comme chaque sprint capteur précédent** : GPS **foreground
+  uniquement** (`expo-location` — `docs/04` ne documente aucune exigence de suivi arrière-plan,
+  l'inventer aurait ajouté des permissions Android supplémentaires/révision Play Store sans gain
+  documenté) ; réseau = signal **appareil** (`NetInfo.isConnected`/`isInternetReachable`), pas une
+  accessibilité **serveur** réelle — `SERVER_UNAVAILABLE`/`AUTHENTICATION_DEGRADED` restent hors
+  scope (décision déjà actée au Sprint 015, pas réouverte ici).
+- **Ajouter les capteurs réels casse silencieusement les tests d'intégration existants tant qu'on
+  n'y pense pas** : dès que `MissionContext.tsx` appelle `createExpoLocationProvider()`/
+  `createNetInfoSensor()` par défaut, **tout** test qui monte `MissionProvider` sans override
+  déclenche un import + appel des vrais modules natifs `expo-location`/
+  `@react-native-community/netinfo`, qui plantent sous Jest (pas de module natif). Les 8 tests
+  `missionContext.test.tsx` préexistants (Sprints 017-1/018/019) ont tous cassé d'un coup en
+  ajoutant ce câblage — corrigé en donnant des fournisseurs factices par défaut à
+  `renderMissionContext()` (même réflexe que `getDbOverride`/`syncTransportOverride`/
+  `speakerOverride` avant eux). **Règle à retenir pour tout futur capteur natif** : dès qu'un
+  provider par défaut est appelé inconditionnellement dans `MissionContext.tsx`, TOUS les tests
+  existants du fichier doivent recevoir son override, pas seulement les nouveaux tests qui le
+  concernent directement.
+- **Un fix GPS réel et un fix simulé (`dev.gps`, Sprint 019) empruntent exactement le même chemin
+  de traitement** (`gpsEngine.updatePosition()` puis `afterMutation`) — décision délibérée pour
+  n'avoir qu'un seul code de rechargement du contexte à maintenir, jamais deux qui pourraient
+  diverger. Le simulateur reste néanmoins indépendant du capteur réel (deux fournisseurs distincts,
+  jamais l'un n'appelle l'autre) — coexistent proprement : le mode dev fonctionne aussi bien sur un
+  device avec GPS actif que sans.
+- **`checkTimeout` appelé par un `setInterval` créé dans `MissionContext`, pas dans le moteur** —
+  cohérent avec `docs/04` (« le moteur ne possède aucun timer propre ») et le même principe déjà
+  appliqué au Sync/Offline Engine (`runSyncCycle`/`checkConnectivity` attendaient déjà un
+  déclencheur externe). Nettoyé dans le cleanup du `useEffect` de chargement — pas de fuite si le
+  provider change d'identité entre deux montages.
+- **`NoMissionScreen` lit `useAuth()` directement** (pas de nouveau threading de prop) — `AuthProvider`
+  enveloppe déjà tout l'arbre (`App.tsx`), donc n'importe quel écran sous `MissionProvider` peut
+  appeler `useAuth()` sans que `MissionContext` ait besoin de connaître Supabase Auth.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,

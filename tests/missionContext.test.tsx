@@ -1,11 +1,14 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { systemClock } from '@/domain/clock';
+import type { GpsPosition } from '@/engines/gps';
 import type { Speaker } from '@/engines/voice';
 import { createStateMachine } from '@/engines/state-machine';
 import type { SyncOperationOutcome, SyncTransport } from '@/engines/sync/types';
 import type { SyncOperation } from '@/domain/entities';
 import { MissionProvider, useMissionContext } from '@/context/MissionContext';
+import type { LocationProvider } from '@/integrations/location/expoLocationProvider';
+import type { NetworkSensor } from '@/integrations/network/expoNetInfoProvider';
 import { createMissionItemRepository } from '@/persistence/repositories/missionItemRepository';
 
 import { createFakeDb } from './testFakeDb';
@@ -13,9 +16,11 @@ import { createFakeDb } from './testFakeDb';
 // Sprint 017 (partie 1/N) integration test: MissionProvider wired to the
 // real State Machine/GPS/Sync/Offline/Voice engines over a fake in-memory DB
 // (expo-sqlite can't run under Jest, see testFakeDb.ts). `syncTransportOverride`/
-// `speakerOverride` keep this test from ever touching the real network or a
-// native speech module — same "jamais de vrai réseau touché en test" rule as
-// every other engine test in this repo (memory.md).
+// `speakerOverride`/`locationProviderOverride`/`networkSensorOverride` keep
+// this test from ever touching the real network, a native speech module, or
+// `expo-location`/NetInfo (Sprint 017 partie 2/N) — same "jamais de vrai
+// réseau/capteur touché en test" rule as every other engine test in this
+// repo (memory.md).
 function createFakeTransport(): SyncTransport & { sent: SyncOperation[] } {
   const sent: SyncOperation[] = [];
   return {
@@ -35,6 +40,46 @@ function createFakeSpeaker(): Speaker {
   };
 }
 
+// Never grants/never emits a fix — the GPS-driven test below exercises the
+// engine chain through `dev.gps` (the Sprint 011-012 simulator) instead,
+// exactly like a real device would coexist with the dev tool.
+function createFakeLocationProvider(): LocationProvider {
+  return {
+    start: async () => ({ granted: false }),
+    stop: () => {},
+  };
+}
+
+// Never fires — tests that care about network state drive it through
+// `dev.setNetworkOverride` instead, the same override a real sensor would
+// have to yield priority to.
+function createFakeNetworkSensor(): NetworkSensor {
+  return { start: () => () => {} };
+}
+
+// A location provider whose fixes are driven by the test itself, exercising
+// the *real* sensor code path (as opposed to `dev.gps`, the Sprint 011-012
+// simulator's path) — the two are independent callers of the same GPS
+// Engine, both need coverage.
+function createControllableLocationProvider() {
+  let onFix: ((fix: GpsPosition) => void | Promise<void>) | null = null;
+  const provider: LocationProvider = {
+    start: async (fix) => {
+      onFix = fix;
+      return { granted: true };
+    },
+    stop: () => {
+      onFix = null;
+    },
+  };
+  return {
+    provider,
+    async emit(position: GpsPosition) {
+      await onFix?.(position);
+    },
+  };
+}
+
 function renderMissionContext() {
   const db = createFakeDb();
   const transport = createFakeTransport();
@@ -47,6 +92,8 @@ function renderMissionContext() {
           getDbOverride={() => Promise.resolve(db)}
           syncTransportOverride={() => transport}
           speakerOverride={() => createFakeSpeaker()}
+          locationProviderOverride={() => createFakeLocationProvider()}
+          networkSensorOverride={() => createFakeNetworkSensor()}
         >
           {children}
         </MissionProvider>
@@ -232,5 +279,121 @@ describe('MissionContext — real engines wired over a fake DB', () => {
     await waitFor(() => {
       expect(result.current.allMissionItems.find((i) => i.id === activeId)?.status).toBe('APPROACHING');
     });
+  });
+
+  it('gpsState reflects a real location provider granting permission, and its fixes drive the same engine chain as dev.gps', async () => {
+    const { provider, emit } = createControllableLocationProvider();
+    const db = createFakeDb();
+    const transport = createFakeTransport();
+    const { result } = renderHook(() => useMissionContext(), {
+      wrapper: ({ children }) => (
+        <MissionProvider
+          getDbOverride={() => Promise.resolve(db)}
+          syncTransportOverride={() => transport}
+          speakerOverride={() => createFakeSpeaker()}
+          locationProviderOverride={() => provider}
+          networkSensorOverride={() => createFakeNetworkSensor()}
+        >
+          {children}
+        </MissionProvider>
+      ),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.gpsState).toEqual({ available: true });
+
+    const activeId = result.current.activeMissionItem?.id as string;
+    const coordinate = { latitude: 45.78, longitude: -73.95 };
+    const itemRepo = createMissionItemRepository(db);
+    const activeItem = await itemRepo.getById(activeId);
+    await itemRepo.upsert({ ...(activeItem as NonNullable<typeof activeItem>), ...coordinate });
+
+    const fixAt = (timestamp: string): GpsPosition => ({
+      ...coordinate,
+      accuracyMeters: 5,
+      headingDegrees: null,
+      speedMetersPerSecond: null,
+      timestamp: new Date(timestamp),
+    });
+
+    // Same two-step dance as the dev.gps test above: the first fix only
+    // reloads the item's new coordinates (no active residence armed yet in
+    // the engine); the second fix (5 s later by timestamp, not wall-clock —
+    // the engine compares `GpsPosition.timestamp`, see gpsEngine.test.ts)
+    // confirms the approach-radius entry.
+    await act(async () => {
+      await emit(fixAt('2026-08-02T10:00:00.000Z'));
+    });
+    await act(async () => {
+      await emit(fixAt('2026-08-02T10:00:00.000Z'));
+      await emit(fixAt('2026-08-02T10:00:05.000Z'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.allMissionItems.find((i) => i.id === activeId)?.status).toBe('APPROACHING');
+    });
+  });
+
+  it('gpsState reports permission_denied when the location provider refuses', async () => {
+    const deniedProvider: LocationProvider = {
+      start: async () => ({ granted: false }),
+      stop: () => {},
+    };
+    const { result } = renderHook(() => useMissionContext(), {
+      wrapper: ({ children }) => (
+        <MissionProvider
+          getDbOverride={() => Promise.resolve(createFakeDb())}
+          syncTransportOverride={() => createFakeTransport()}
+          speakerOverride={() => createFakeSpeaker()}
+          locationProviderOverride={() => deniedProvider}
+          networkSensorOverride={() => createFakeNetworkSensor()}
+        >
+          {children}
+        </MissionProvider>
+      ),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.gpsState).toEqual({ available: false, reason: 'permission_denied' });
+  });
+
+  it('a real network sensor event (not the dev override) also drives offlineState', async () => {
+    let onChange: ((online: boolean) => void) | null = null;
+    const sensor: NetworkSensor = {
+      start: (cb) => {
+        onChange = cb;
+        return () => {
+          onChange = null;
+        };
+      },
+    };
+    const { result } = renderHook(() => useMissionContext(), {
+      wrapper: ({ children }) => (
+        <MissionProvider
+          getDbOverride={() => Promise.resolve(createFakeDb())}
+          syncTransportOverride={() => createFakeTransport()}
+          speakerOverride={() => createFakeSpeaker()}
+          locationProviderOverride={() => createFakeLocationProvider()}
+          networkSensorOverride={() => sensor}
+        >
+          {children}
+        </MissionProvider>
+      ),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.offlineState.status).toBe('ONLINE');
+
+    // The sensor alone doesn't push offlineState — it only updates the ref
+    // read by `networkStatus.isOnline()`; a real check (`checkConnectivity`,
+    // normally triggered by an actual sync attempt) has to run for it to
+    // show up here, exactly like `dev.setNetworkOverride` does internally.
+    act(() => {
+      onChange?.(false);
+    });
+    await act(async () => {
+      await result.current.dev.setNetworkOverride(null);
+    });
+    await waitFor(() => expect(result.current.offlineState.status).toBe('OFFLINE'));
   });
 });
