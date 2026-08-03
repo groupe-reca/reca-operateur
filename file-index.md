@@ -64,19 +64,23 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - `src/app/` — composition racine (providers, thème, montage). Vide.
 - `src/screens/`
   - `LiveMissionScreen.tsx` (Sprint 017 partie 1/N, 2026-08-02, **nouveau point d'entrée réel** ;
-    étendu Sprints 018/019/017-partie-2) — `useMissionContext()` → `deriveMissionScreenState(ctx,
-    new Date())` (mémoïsé sur les champs utiles, pas sur `ctx` entier) → `MissionScreen`. Ordre de
-    priorité : `loading` → `__DEV__ && devScreenOpen` (Sprint 019, `DevScreen`, état local mis à
-    `true` via `onMenu` du header, jamais en build release) → `deriveEndOfMissionState(ctx, new
-    Date())` non nul (Sprint 018, `EndOfMissionScreen` — mission éligible à la fermeture) →
-    `!mission || mission.status === 'COMPLETED'` (Sprint 017 partie 2/N, `NoMissionScreen` — vrai
-    écran « Aucune mission » `docs/11`, remplace l'ancien repli générique pour ce cas précis) →
-    `screenState`/`MissionScreen` → repli minimal texte résiduel (mission chargée, pas fermée, mais
+    étendu Sprints 018/019/017-partie-2/Mission-active) — `useMissionContext()` →
+    `deriveMissionScreenState(ctx, new Date())` (mémoïsé sur les champs utiles, pas sur `ctx`
+    entier) → `MissionScreen`. Ordre de priorité : `loading` → `__DEV__ && devScreenOpen`
+    (Sprint 019, `DevScreen`, état local mis à `true` via `onMenu` du header, jamais en build
+    release) → `deriveEndOfMissionState(ctx, new Date())` non nul (Sprint 018, `EndOfMissionScreen`
+    — mission éligible à la fermeture) → `!mission || mission.status === 'COMPLETED'` (Sprint 017
+    partie 2/N, `NoMissionScreen` — vrai écran « Aucune mission » `docs/11`, remplace l'ancien
+    repli générique pour ce cas précis) → `missionActiveState` non nul (Sprint « Mission active »,
+    `mission.status === 'READY'`, `MissionActiveScreen` — **change le comportement précédent** :
+    une mission `READY` allait auparavant directement à l'écran de travail, artefact de l'écran
+    manquant) → `screenState`/`MissionScreen` → repli minimal texte résiduel (mission `IN_PROGRESS`
     sans aucun `MissionItem` — combinaison non décrite par `docs/11`). Câble `onResolveProblem`/
     `onSkipItem` aux commandes réelles du contexte ; **`onReportProblem` volontairement sans
     effet** — aucune UI/taxonomie de `problemCode` documentée, voir `memory.md`.
-    `handleCloseMission` (Sprint 018) gère `closing`/`closed`/`closeError` local, appelle
-    `ctx.closeMission()`.
+    `handleCloseMission` (Sprint 018)/`handleStartMission` (Sprint « Mission active ») gèrent leur
+    état `closing`/`closed`/`closeError`/`starting`/`startError` local, appellent
+    `ctx.closeMission()`/`ctx.startMission()`.
   - `deriveMissionScreenState.ts` (Sprint 017 partie 1/N, pur, testé
     `tests/deriveMissionScreenState.test.ts`) — traduit `MissionContextValue` (mission/résidence
     active/items/sync/offline) vers `MissionScreenState` sans toucher `MissionScreen`. Cherche un
@@ -114,6 +118,18 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     (`ctx.refreshAssignment()`), bouton Déconnexion (`useAuth().logout()`, masqué si non
     authentifié). « Ne doit pas ressembler à un tableau de bord administratif » — pas de
     liste/tableau, juste ce que `docs/11` demande.
+  - `MissionActiveScreen.tsx` (Sprint « Mission active », 2026-08-03) — écran « Mission active »
+    (`docs/11` Écrans finaux) : résumé mission (secteur/date), équipement (`Mission.equipment`),
+    nombre de résidences, section « Préparation hors ligne » (état sync/réseau réels, pas un
+    nouveau mécanisme de téléchargement — les données sont déjà locales), alertes importantes
+    (`ctx.missionAlerts` ou état vide honnête — la table n'a encore aucun producteur), bouton
+    « Démarrer la tournée » → `ctx.startMission()`. Présentation pure, props `state`/`onStart`/
+    `starting`/`startError`.
+  - `deriveMissionActiveState.ts` (Sprint « Mission active », pur, testé
+    `tests/deriveMissionActiveState.test.ts`) — `null` sauf mission chargée et
+    `mission.status === 'READY'` (`ASSIGNED` jamais produit dans ce repo, hors scope). Traduit
+    `MissionContextValue` → secteur/date/équipement/décompte résidences/état sync-réseau/alertes,
+    rien d'inventé.
   - `MissionScreen.tsx` — **écran produit**, désormais **piloté par les données**
     (Sprint 004) : accepte une prop `state: MissionScreenState` + 3 callbacks optionnels
     (`onReportProblem`/`onResolveProblem`/`onSkipItem`, Sprint 017 partie 1/N, no-op par défaut) +
@@ -242,18 +258,24 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     intrinsèquement basée sur des composants).
 - `src/context/`
   - `MissionContext.tsx` (Sprint 007-008, réécrit Sprint 017 partie 1/N — 2026-08-02 ; étendu
-    Sprints 018/019/017-partie-2) — `MissionProvider`/`useMissionContext()` : au montage,
-    instancie les 5 moteurs réels (State Machine/GPS/Sync/Offline/Voice, refs stables) puis charge
-    (migrations → **`fetchAssignedMission` si `employeeId` fourni, sinon/en repli seed démo si
-    vide** → mission sélectionnée sans ambiguïté via `assigned?.id ?? missions[0]?.id` → session
-    ouverte → démarre le capteur GPS réel si une mission existe (Sprint 017 partie 2/N) →
+    Sprints 018/019/017-partie-2/Mission-active) — `MissionProvider`/`useMissionContext()` : au
+    montage, instancie les 5 moteurs réels (State Machine/GPS/Sync/Offline/Voice, refs stables)
+    puis charge (migrations → **`fetchAssignedMission` si `employeeId` fourni, sinon/en repli seed
+    démo si vide** → mission sélectionnée sans ambiguïté via `assigned?.id ?? missions[0]?.id` →
+    alertes de la mission chargées (Sprint « Mission active », `missionAlertRepository.getAll()`
+    filtré aux items sélectionnés) → session ouverte → démarre le capteur GPS réel si une mission
+    existe (Sprint 017 partie 2/N) →
     `offlineEngine.checkConnectivity()`/`syncEngine.recoverOnStartup()`/`runSyncCycle()`). Expose
-    `mission`/`activeMissionItem`/`nextMissionItems`/`allMissionItems`/`gpsState` (**réel** depuis
-    le Sprint 017 partie 2/N — `{available:true}` ou `{available:false, reason}`, jamais figé)/
+    `mission`/`activeMissionItem`/`nextMissionItems`/`allMissionItems`/`missionAlerts` (Sprint
+    « Mission active », chargé une fois au montage — aucun producteur n'écrit encore dans
+    `mission_alerts`, jamais rafraîchi par `afterMutation`)/`gpsState` (**réel** depuis le Sprint
+    017 partie 2/N — `{available:true}` ou `{available:false, reason}`, jamais figé)/
     `synchronizationState`/`offlineState` (réels depuis leurs sprints respectifs) + les commandes
     `reportProblem`/`resolveProblem`/`skipItem`/**`closeMission`** (Sprint 018 : voir plus bas) +
-    **`refreshAssignment`** (Sprint 017 partie 2/N — relance `fetchAssignedMission` sans redémarrer
-    capteurs/session, appelée par `NoMissionScreen`) + **`dev`** (Sprint 019, `DevTools` — `gps`
+    **`startMission`** (Sprint « Mission active » — `requestMissionStart`, même patron que
+    `closeMission`, recharge `mission` sur succès) + **`refreshAssignment`** (Sprint 017 partie 2/N
+    — relance `fetchAssignedMission` sans redémarrer capteurs/session, appelée par
+    `NoMissionScreen`) + **`dev`** (Sprint 019, `DevTools` — `gps`
     enveloppe `createGpsSimulator` autour de `gpsEngineRef` avec rechargement `afterMutation`
     intégré ; `thresholds` = `DEFAULT_GPS_THRESHOLDS` telle quelle, jamais overridée ; `getStates`/
     `getEvents` agrègent ce que les 4 moteurs exposent déjà ; `getSyncQueue`/`getTransitions`
@@ -415,26 +437,28 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   existent, `offline` présent seulement hors `ONLINE`, résidences carte plafonnées à 5 en filtrant
   celles sans coordonnées.
 - `tests/missionContext.test.tsx` (Sprint 017 partie 1/N, 2026-08-02 ; étendu Sprints
-  018/019/017-partie-2) — 11 tests d'intégration réelle (`MissionProvider` sur un faux `Db`/
-  transport Sync/`Speaker`/`LocationProvider`/`NetworkSensor` injectés — jamais de vrai réseau/
-  synthèse/capteur, voir `getDbOverride`/`syncTransportOverride`/`speakerOverride`/
+  018/019/017-partie-2/Mission-active) — 13 tests d'intégration réelle (`MissionProvider` sur un
+  faux `Db`/transport Sync/`Speaker`/`LocationProvider`/`NetworkSensor` injectés — jamais de vrai
+  réseau/synthèse/capteur, voir `getDbOverride`/`syncTransportOverride`/`speakerOverride`/
   `locationProviderOverride`/`networkSensorOverride`) : chargement de la mission de démo (premier
   item EN_ROUTE actif), `reportProblem` → `PROBLEM` + `activeMissionItem` redevient `null`,
   `resolveProblem` → retour à un état actif, `skipItem` → `SKIPPED` + opération de sync mise en
-  file, `closeMission` refusé tant qu'un item `WAITING`/actif subsiste, `closeMission` réussit une
-  fois tous les items résolus (`SKIPPED` autorisé) — simule le `requestMissionStart`
-  READY→IN_PROGRESS directement via une seconde instance de State Machine sur le même faux `Db`
-  plutôt que d'exposer une commande de contexte sans appelant réel (le « démarrer » de l'écran
-  Mission active, `docs/11`, reste hors scope ; une vraie mission Supabase arrive déjà
-  `IN_PROGRESS`, voir `fetchAssignedMission.ts`), `dev.setNetworkOverride(false)`/`(null)` force
-  `offlineState` OFFLINE puis RECOVERING, `dev.gps.moveTo`/`advanceTime` déclenchent une vraie
-  transition EN_ROUTE→APPROACHING via le State Machine réel (écrit d'abord les coordonnées de
-  l'item actif dans le faux `Db`, la mission de démo n'en a pas — voir `memory.md`), **un vrai
-  fournisseur GPS contrôlable** (`locationProviderOverride`) pousse des fix qui déclenchent la même
-  transition par le chemin capteur réel (`gpsState` reflète `{available:true}`), `gpsState`
-  `permission_denied` quand le fournisseur refuse, **un écouteur réseau réel** (indépendant du mode
-  dev) met à jour `realNetworkStatusRef`, `dev.setNetworkOverride(null)` retombe dessus. Mutations
-  enveloppées dans `act()` (State Machine → contexte → re-render, comme tout hook React testé).
+  file, `startMission` READY→IN_PROGRESS réel puis refus (transition dupliquée) si déjà
+  `IN_PROGRESS`, `closeMission` refusé tant qu'un item `WAITING`/actif subsiste, `closeMission`
+  réussit une fois `startMission` appelé et tous les items résolus (`SKIPPED` autorisé),
+  `dev.setNetworkOverride(false)`/`(null)` force `offlineState` OFFLINE puis RECOVERING,
+  `dev.gps.moveTo`/`advanceTime` déclenchent une vraie transition EN_ROUTE→APPROACHING via le State
+  Machine réel (écrit d'abord les coordonnées de l'item actif dans le faux `Db`, la mission de démo
+  n'en a pas — voir `memory.md`), **un vrai fournisseur GPS contrôlable**
+  (`locationProviderOverride`) pousse des fix qui déclenchent la même transition par le chemin
+  capteur réel (`gpsState` reflète `{available:true}`), `gpsState` `permission_denied` quand le
+  fournisseur refuse, **un écouteur réseau réel** (indépendant du mode dev) met à jour
+  `realNetworkStatusRef`, `dev.setNetworkOverride(null)` retombe dessus. Mutations enveloppées dans
+  `act()` (State Machine → contexte → re-render, comme tout hook React testé).
+- `tests/deriveMissionActiveState.test.ts` (Sprint « Mission active », 2026-08-03) — 6 tests purs :
+  `null` sans mission, `null` si `status !== 'READY'` (`IN_PROGRESS`/`COMPLETED`), éligible pour
+  `READY` avec décompte/équipement/alertes vides, mapping `missionAlerts` → niveau/texte, reflet
+  honnête d'un état sync/réseau réel (`PENDING`/`OFFLINE`).
 - `tests/deriveEndOfMissionState.test.ts` (Sprint 018, 2026-08-02) — 7 tests purs : `null` sans
   mission, `null` mission déjà `COMPLETED`, `null` tant qu'un item `WAITING` ou actif subsiste,
   éligible avec un item `PROBLEM`/`SKIPPED` restant (n'empêche pas la fermeture), décompte/durée/

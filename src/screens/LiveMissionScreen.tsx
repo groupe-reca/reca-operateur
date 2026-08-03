@@ -5,9 +5,11 @@ import { useMissionContext } from '@/context/MissionContext';
 import { colors, spacing } from '@/config/theme';
 
 import { deriveEndOfMissionState } from './deriveEndOfMissionState';
+import { deriveMissionActiveState } from './deriveMissionActiveState';
 import { deriveMissionScreenState } from './deriveMissionScreenState';
 import { DevScreen } from './DevScreen';
 import { EndOfMissionScreen } from './EndOfMissionScreen';
+import { MissionActiveScreen } from './MissionActiveScreen';
 import { MissionScreen } from './MissionScreen';
 import { NoMissionScreen } from './NoMissionScreen';
 import { Txt } from '../components/ui/Txt';
@@ -23,6 +25,8 @@ export function LiveMissionScreen() {
   const [closed, setClosed] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
   const [devScreenOpen, setDevScreenOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   // Deliberately not a live ticker (see deriveMissionScreenState.ts) —
   // re-derived only when the underlying mission data actually changes, not
@@ -35,6 +39,10 @@ export function LiveMissionScreen() {
   const endOfMissionState = useMemo(
     () => deriveEndOfMissionState(ctx, new Date()),
     [ctx.mission, ctx.allMissionItems, ctx.synchronizationState] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const missionActiveState = useMemo(
+    () => deriveMissionActiveState(ctx),
+    [ctx.mission, ctx.allMissionItems, ctx.missionAlerts, ctx.synchronizationState, ctx.offlineState] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const problemItem = ctx.allMissionItems.find((item) => item.status === 'PROBLEM') ?? null;
@@ -49,6 +57,16 @@ export function LiveMissionScreen() {
       setClosed(true);
     } else {
       setCloseError(result.errorMessage ?? 'La fermeture de la mission a échoué.');
+    }
+  }
+
+  async function handleStartMission() {
+    setStarting(true);
+    setStartError(null);
+    const result = await ctx.startMission();
+    setStarting(false);
+    if (!result.success) {
+      setStartError(result.errorMessage ?? 'Le démarrage de la mission a échoué.');
     }
   }
 
@@ -94,10 +112,26 @@ export function LiveMissionScreen() {
     return <NoMissionScreen ctx={ctx} />;
   }
 
-  // No active/problem residence and mission not closed/absent (edge case:
-  // a loaded mission with zero MissionItems) — minimal honest fallback,
-  // not a dedicated screen (nothing in docs/11 describes this specific
-  // combination).
+  // Sprint "Mission active" — docs/11 écran "Mission active" : a mission is
+  // loaded but not started yet (`READY`). Shown before the live working
+  // screen — this is a behaviour change from before this sprint (a READY
+  // mission used to go straight to the map, skipping this step entirely,
+  // an artifact of the missing screen, not a deliberate design choice).
+  if (missionActiveState) {
+    return (
+      <MissionActiveScreen
+        state={missionActiveState}
+        onStart={handleStartMission}
+        starting={starting}
+        startError={startError}
+      />
+    );
+  }
+
+  // No active/problem residence and mission not closed/absent/not-started
+  // (edge case: an IN_PROGRESS mission with zero MissionItems) — minimal
+  // honest fallback, not a dedicated screen (nothing in docs/11 describes
+  // this specific combination).
   if (!screenState || !targetItemId) {
     return (
       <View style={styles.fallback}>

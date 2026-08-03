@@ -10,6 +10,77 @@
 
 ## Archivé
 
+### ✅ Sprint — Écran « Mission active » (branche `sprint-mission-active-screen`, 2026-08-03)
+
+**Objectif** (`docs/11-Roadmap.md` Écran « Mission active ») : consulter la mission, démarrer,
+vérifier la préparation hors ligne, voir le nombre de résidences, voir les alertes importantes,
+voir l'équipement. **Choisi comme prochain sprint avec le propriétaire** (alternatives écartées :
+Paramètres — cosmétique, aucun gap fonctionnel ; Mode hors ligne dédié — l'overlay
+`OfflineIndicator` couvre déjà l'essentiel). Résout au passage le gap documenté au Sprint 018 : la
+mission de démo reste `READY` indéfiniment faute d'un bouton « démarrer » — cet écran en devient le
+premier appelant réel (`requestMissionStart`, State Machine Sprint 009-010, jamais câblé jusqu'ici).
+
+**Portée** : `requestMissionStart` (docs/09) n'autorise que `READY → IN_PROGRESS` — `ASSIGNED`
+n'est produit nulle part dans ce repo (`seedDemoMissionIfEmpty` crée `READY` directement,
+`fetchAssignedMission` mappe `IN_PROGRESS`/`READY` seulement), donc cet écran ne gère que le cas
+`READY`. Pause/reprise (`requestMissionPause`/`requestMissionResume`, existent côté State Machine)
+**non couverts** — `docs/11` ne les mentionne pas pour cet écran précis, aucune UI ne les expose
+nulle part encore, les inventer ici serait hors mandat.
+
+**Design** :
+1. **`MissionContext.missionAlerts: MissionAlertRecord[]`** (nouveau) — chargé au montage via
+   `missionAlertRepository.getAll()` filtré aux items de la mission sélectionnée (table jamais
+   peuplée à ce jour, honnêtement vide plutôt qu'un état inventé — même esprit que `alerts: []`
+   dans `deriveMissionScreenState.ts`).
+2. **`MissionContext.startMission(): Promise<TransitionResult>`** (nouveau) — même patron que
+   `closeMission()` : appelle `stateMachine.requestMissionStart(mission.id)`, recharge `mission`
+   (le statut change, pas seulement les items) via `reloadMission` existant, retourne le
+   `TransitionResult` brut pour un vrai message d'erreur.
+3. **`deriveMissionActiveState.ts`** (nouveau, pur, testé) — `null` sauf `mission` chargée et
+   `mission.status === 'READY'`. Retourne secteur/date, `equipment` (`Mission.equipment`, déjà
+   dans le schéma), nombre de résidences (`allMissionItems.length`), préparation hors ligne
+   (`synchronizationState`/`offlineState`, déjà réels), alertes (`missionAlerts` mappées
+   niveau/texte).
+4. **`MissionActiveScreen.tsx`** (nouveau, présentation pure) : logo, résumé mission, équipement,
+   nombre de résidences, section « Préparation hors ligne » (état sync/réseau honnête, pas un
+   nouveau mécanisme de téléchargement — les données sont déjà locales via `fetchAssignedMission`/
+   seed), alertes importantes (liste ou état vide honnête), bouton « Démarrer la tournée » →
+   `ctx.startMission()`.
+5. **`LiveMissionScreen.tsx`** : nouvelle branche entre le repli « Aucune mission » et l'écran de
+   travail — `mission.status === 'READY'` → `MissionActiveScreen`. Change le comportement actuel
+   (une mission `READY` va aujourd'hui directement à l'écran de travail, sautant cette étape) —
+   **changement de comportement assumé**, c'était un artefact de l'écran manquant, pas un choix de
+   design délibéré.
+
+**Hors scope, explicitement différé** : statut `ASSIGNED` (jamais produit dans ce repo) ; pause/
+reprise de mission ; production d'alertes (aucun producteur n'existe, `mission_alerts` reste vide
+en pratique) ; téléchargement explicite de cartes hors ligne (`docs/08`, déjà différé au
+Sprint 015).
+
+**Vérification** : tests purs (`deriveMissionActiveState` — éligibilité, mapping alertes/
+équipement/décompte) ; test d'intégration (`missionContext.test.tsx` — `startMission` READY→
+IN_PROGRESS réel, refus si transition invalide) ; `tsc`/`eslint`/`jest` verts ; `expo-doctor`.
+
+**Réalisé conformément au plan, du premier coup** :
+- Points 1-5 implémentés tels que décrits : `MissionContext.missionAlerts` (chargé au montage,
+  filtré aux items de la mission sélectionnée) ; `MissionContext.startMission()` (même patron que
+  `closeMission`) ; `deriveMissionActiveState.ts` (pur, testé) ; `MissionActiveScreen.tsx`
+  (résumé/équipement/résidences/préparation hors ligne/alertes/bouton Démarrer) ;
+  `LiveMissionScreen.tsx` insère la nouvelle branche entre « Aucune mission » et l'écran de
+  travail.
+- **Bonus non prévu au plan** : `startMission()` étant maintenant une vraie commande de contexte,
+  le test `closeMission` existant (qui simulait `requestMissionStart` via une seconde instance de
+  State Machine sur le même faux `Db`, faute de commande réelle à l'époque du Sprint 018) a pu être
+  simplifié pour appeler `result.current.startMission()` directement — une dette de test de moins,
+  découverte en écrivant ce sprint plutôt que planifiée.
+- **Vérification** : `tsc --noEmit`/`eslint .`/`npx jest` tous verts (157/157 tests, dont 6
+  nouveaux `tests/deriveMissionActiveState.test.ts` + 2 nouveaux tests d'intégration `startMission`
+  dans `missionContext.test.tsx`), `npx expo-doctor` 20/20. **Non vérifié sur device réel** :
+  aucune dépendance native ajoutée cette passe, mais pas testé physiquement sur l'appareil — suivi
+  ouvert, même pattern que chaque sprint précédent.
+
+## Archivé
+
 ### ✅ Sprint 017 (partie 2/N) — Capteurs réels + écran « Aucune mission » (branche
 `sprint-017-partie-2-capteurs-reels`, 2026-08-03)
 
