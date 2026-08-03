@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { systemClock } from '@/domain/clock';
-import type { Mission, MissionItem, OperatorSession, StateTransition, SyncOperation } from '@/domain/entities';
+import type { Mission, MissionAlertRecord, MissionItem, OperatorSession, StateTransition, SyncOperation } from '@/domain/entities';
 import { generateId } from '@/domain/id';
 import {
   createGpsEngine,
@@ -26,6 +26,7 @@ import { fetchAssignedMission } from '@/integrations/supabase/fetchAssignedMissi
 import { createSupabaseSyncTransport } from '@/integrations/supabase/supabaseSyncTransport';
 import { createExpoSpeaker } from '@/integrations/voice/expoSpeaker';
 import { getDb } from '@/persistence/db';
+import { createMissionAlertRepository } from '@/persistence/repositories/missionAlertRepository';
 import { createMissionItemRepository } from '@/persistence/repositories/missionItemRepository';
 import { createMissionRepository } from '@/persistence/repositories/missionRepository';
 import { createOperatorSessionRepository } from '@/persistence/repositories/operatorSessionRepository';
@@ -58,6 +59,11 @@ export type MissionContextValue = {
   // which `nextMissionItems` alone can't provide (it only lists WAITING
   // items).
   allMissionItems: MissionItem[];
+  // Sprint "Mission active" — loaded once at mount, filtered to the
+  // selected mission's items. `mission_alerts` has no producer anywhere in
+  // this repo yet (see deriveMissionScreenState.ts's own `alerts: []`) —
+  // honestly empty rather than invented, ready for whenever one exists.
+  missionAlerts: MissionAlertRecord[];
   gpsState: GpsState;
   synchronizationState: SynchronizationState;
   offlineState: OfflineState;
@@ -79,6 +85,13 @@ export type MissionContextValue = {
   // void like the other commands) so the screen can surface a real error
   // instead of failing silently.
   closeMission(): Promise<TransitionResult>;
+  // Sprint "Mission active" — "Démarrer la tournée" (docs/11, écran Mission
+  // active). Delegates to requestMissionStart (State Machine, Sprint
+  // 009-010) — only valid from READY (docs/09 Mission graph); ASSIGNED is
+  // never produced anywhere in this repo, see plans.md. Same pattern as
+  // closeMission: reloads `mission` (its own status changes, not an item),
+  // returns the raw TransitionResult.
+  startMission(): Promise<TransitionResult>;
   // Sprint 017 (partie 2/N) — "Actualiser" (NoMissionScreen.tsx, docs/11
   // "Aucune mission"). Re-checks whether a mission has since been assigned,
   // without restarting sensors/session (see the implementation below).
@@ -182,6 +195,7 @@ export function MissionProvider({
 }: Props) {
   const [mission, setMission] = useState<Mission | null>(null);
   const [items, setItems] = useState<MissionItem[]>([]);
+  const [missionAlerts, setMissionAlerts] = useState<MissionAlertRecord[]>([]);
   const [session, setSession] = useState<OperatorSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [synchronizationState, setSynchronizationState] = useState<SynchronizationState>({
@@ -276,6 +290,10 @@ export function MissionProvider({
       const selectedMissionId = assigned?.id ?? missions[0]?.id ?? null;
       const selectedMission = missions.find((m) => m.id === selectedMissionId) ?? null;
       const selectedItems = selectedMissionId ? missionItems.filter((item) => item.missionId === selectedMissionId) : [];
+      const selectedItemIds = new Set(selectedItems.map((item) => item.id));
+      const alertRepo = createMissionAlertRepository(db);
+      const allAlerts = await alertRepo.getAll();
+      const selectedAlerts = allAlerts.filter((alert) => selectedItemIds.has(alert.missionItemId));
 
       const now = systemClock.now().toISOString();
       const newSession: OperatorSession = {
@@ -328,6 +346,7 @@ export function MissionProvider({
       if (!cancelled) {
         setMission(selectedMission);
         setItems(selectedItems);
+        setMissionAlerts(selectedAlerts);
         setSession(newSession);
         setOfflineState(offlineEngineRef.current.getState());
         setSynchronizationState(await syncEngineRef.current.getSynchronizationState());
@@ -457,6 +476,18 @@ export function MissionProvider({
       // the screen would never observe its own success.
       await reloadMission(mission.id);
       await afterMutation(mission.id);
+    }
+    return result;
+  }
+
+  async function startMission(): Promise<TransitionResult> {
+    const stateMachine = stateMachineRef.current;
+    if (!stateMachine || !mission) {
+      return { success: false, errorCode: 'MISSION_NOT_FOUND', errorMessage: 'no active mission' };
+    }
+    const result = await stateMachine.requestMissionStart(mission.id);
+    if (result.success) {
+      await reloadMission(mission.id);
     }
     return result;
   }
@@ -594,6 +625,7 @@ export function MissionProvider({
     activeMissionItem,
     nextMissionItems,
     allMissionItems: items,
+    missionAlerts,
     gpsState,
     synchronizationState,
     offlineState,
@@ -603,6 +635,7 @@ export function MissionProvider({
     skipItem,
     dev,
     closeMission,
+    startMission,
     refreshAssignment,
   };
 

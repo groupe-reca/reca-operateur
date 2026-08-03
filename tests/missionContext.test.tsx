@@ -1,9 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
-import { systemClock } from '@/domain/clock';
 import type { GpsPosition } from '@/engines/gps';
 import type { Speaker } from '@/engines/voice';
-import { createStateMachine } from '@/engines/state-machine';
 import type { SyncOperationOutcome, SyncTransport } from '@/engines/sync/types';
 import type { SyncOperation } from '@/domain/entities';
 import { MissionProvider, useMissionContext } from '@/context/MissionContext';
@@ -187,21 +185,16 @@ describe('MissionContext — real engines wired over a fake DB', () => {
   });
 
   it('closeMission completes the mission once every item is resolved (SKIPPED/PROBLEM allowed)', async () => {
-    const { result, db } = renderMissionContext();
+    const { result } = renderMissionContext();
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // The seeded demo Mission starts READY (docs/09 Mission graph: only
-    // IN_PROGRESS -> COMPLETED is allowed). Moving it to IN_PROGRESS is the
-    // "démarrer" action of the "Mission active" screen (docs/11), out of
-    // scope for this pass (see plans.md) — a real Supabase mission already
-    // arrives IN_PROGRESS instead (fetchAssignedMission.ts maps `statut ===
-    // 'en_cours'`), so this simulates that real path directly against the
-    // same fake db rather than exposing an unused context command with no
-    // caller yet.
-    const missionId = result.current.mission?.id as string;
+    // IN_PROGRESS -> COMPLETED is allowed) — `startMission()` (the "Mission
+    // active" screen's "démarrer" command) moves it to IN_PROGRESS first.
     await act(async () => {
-      await createStateMachine(db, systemClock).requestMissionStart(missionId);
+      await result.current.startMission();
     });
+    await waitFor(() => expect(result.current.mission?.status).toBe('IN_PROGRESS'));
 
     // Skip every item (the active one is EN_ROUTE -> SKIPPED directly
     // allowed, docs/09 transition graph; the rest are WAITING -> SKIPPED).
@@ -395,5 +388,36 @@ describe('MissionContext — real engines wired over a fake DB', () => {
       await result.current.dev.setNetworkOverride(null);
     });
     await waitFor(() => expect(result.current.offlineState.status).toBe('OFFLINE'));
+  });
+
+  it('startMission moves the demo mission READY -> IN_PROGRESS', async () => {
+    const { result } = renderMissionContext();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.mission?.status).toBe('READY');
+
+    let outcome: Awaited<ReturnType<typeof result.current.startMission>> | undefined;
+    await act(async () => {
+      outcome = await result.current.startMission();
+    });
+
+    expect(outcome?.success).toBe(true);
+    await waitFor(() => expect(result.current.mission?.status).toBe('IN_PROGRESS'));
+  });
+
+  it('startMission refuses once the mission is already IN_PROGRESS (no duplicate transition)', async () => {
+    const { result } = renderMissionContext();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.startMission();
+    });
+    await waitFor(() => expect(result.current.mission?.status).toBe('IN_PROGRESS'));
+
+    let outcome: Awaited<ReturnType<typeof result.current.startMission>> | undefined;
+    await act(async () => {
+      outcome = await result.current.startMission();
+    });
+
+    expect(outcome?.success).toBe(false);
   });
 });

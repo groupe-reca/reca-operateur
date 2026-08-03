@@ -438,6 +438,35 @@
     (20/20). **Non vérifiable sur device depuis ce VPS** : 2 nouveaux modules natifs, nécessite le
     cycle `expo prebuild`/Android Studio du propriétaire — suivi ouvert, même pattern que chaque
     sprint ayant ajouté une dépendance native (Voice/gesture-handler/async-storage).
+- [x] **Écran « Mission active »** (branche `sprint-mission-active-screen`, 2026-08-03, PR :
+  https://github.com/groupe-reca/reca-operateur/pull/5, `docs/11-Roadmap.md` Écran « Mission
+  active »). Choisi comme prochain sprint avec le propriétaire
+  (alternatives écartées : Paramètres — cosmétique ; Mode hors ligne dédié — l'overlay
+  `OfflineIndicator` couvre déjà l'essentiel). **Résout le gap documenté au Sprint 018** : la
+  mission de démo restait `READY` indéfiniment faute d'un bouton « démarrer » — cet écran en
+  devient le premier appelant réel de `requestMissionStart` (State Machine, Sprint 009-010).
+  **`MissionContext.missionAlerts`** (nouveau) : chargé au montage
+  via `missionAlertRepository.getAll()` filtré aux items de la mission sélectionnée (table jamais
+  peuplée à ce jour — honnêtement vide, pas un état inventé). **`MissionContext.startMission()`**
+  (nouveau) : même patron que `closeMission` — `requestMissionStart`, recharge `mission` sur
+  succès, retourne le `TransitionResult` brut. **`deriveMissionActiveState.ts`** (nouveau, pur,
+  testé) : `null` sauf mission chargée et `status === 'READY'` (`ASSIGNED` jamais produit dans ce
+  repo, `requestMissionStart` n'autorise que READY→IN_PROGRESS — hors scope, non géré). Retourne
+  secteur/date/équipement/nombre de résidences/préparation hors ligne (sync/réseau réels)/alertes
+  mappées. **`MissionActiveScreen.tsx`** (nouveau, présentation pure) : résumé mission, équipement,
+  résidences, préparation hors ligne, alertes (ou état vide honnête), bouton « Démarrer la
+  tournée ». `LiveMissionScreen.tsx` : nouvelle branche entre « Aucune mission » et l'écran de
+  travail — **changement de comportement assumé** (une mission `READY` allait auparavant
+  directement à l'écran de travail, artefact de l'écran manquant, pas un choix délibéré). **Hors
+  scope, différé** : statut `ASSIGNED`, pause/reprise de mission (existent côté State Machine,
+  aucune UI ne les expose, `docs/11` ne les mentionne pas pour cet écran), production d'alertes
+  (aucun producteur n'existe). Vérifié : `tsc`/`eslint`/`jest` verts (157/157, 18 suites, dont 6
+  nouveaux tests purs `tests/deriveMissionActiveState.test.ts` + 2 nouveaux tests d'intégration
+  `startMission` dans `tests/missionContext.test.tsx` — a aussi permis de simplifier le test
+  `closeMission` existant, qui simulait `requestMissionStart` via une State Machine annexe faute de
+  commande de contexte, désormais réelle)/`expo-doctor` (20/20). **Non vérifié sur device** :
+  aucune dépendance native ajoutée, mais pas testé physiquement sur l'appareil cette passe — suivi
+  ouvert, même pattern que chaque sprint précédent.
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 
 ## À vérifier

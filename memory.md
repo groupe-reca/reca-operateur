@@ -1161,6 +1161,33 @@
   enveloppe déjà tout l'arbre (`App.tsx`), donc n'importe quel écran sous `MissionProvider` peut
   appeler `useAuth()` sans que `MissionContext` ait besoin de connaître Supabase Auth.
 
+## Écran « Mission active » (2026-08-03)
+
+- **Choisi comme prochain sprint avec le propriétaire** : seule pièce de la Phase 11 restante avec
+  un vrai gap fonctionnel derrière (Paramètres/Mode hors ligne dédié sont plus cosmétiques). Résout
+  au passage la limitation documentée au Sprint 018 : sans bouton « démarrer », une mission locale
+  reste `READY` pour toujours — `requestMissionStart` (State Machine, Sprint 009-010) existait déjà
+  mais n'avait jamais d'appelant réel.
+- **`requestMissionStart` n'autorise que `READY → IN_PROGRESS`** (`docs/09` Mission graph) — le
+  statut `ASSIGNED` (`ALLOWED_MISSION_TRANSITIONS.ASSIGNED = ['READY', 'CANCELLED']`) n'est produit
+  **nulle part** dans ce repo (`seedDemoMissionIfEmpty` crée `READY` directement,
+  `fetchAssignedMission` ne mappe que `IN_PROGRESS`/`READY`) — cet écran ne gère donc que `READY`,
+  `ASSIGNED` resterait un cas mort silencieux (tombe dans le repli générique résiduel de
+  `LiveMissionScreen`, jamais un crash) si jamais rencontré.
+- **Changement de comportement assumé, pas une régression** : avant ce sprint, une mission `READY`
+  allait directement à l'écran de travail (`MissionScreen`) — c'était un artefact de l'écran
+  manquant (rien ne bloquait le flux), pas un choix de design. Après ce sprint, une mission `READY`
+  s'arrête d'abord sur `MissionActiveScreen`, cohérent avec le flux documenté par `docs/11`.
+- **`startMission()` a permis de simplifier un test existant** : le test `closeMission` du Sprint
+  018 simulait `requestMissionStart` via une seconde instance de State Machine créée à la main
+  (aucune commande de contexte n'existait encore) — remplacé par un appel direct à
+  `result.current.startMission()`, une dette de test en moins découverte en implémentant, pas
+  planifiée à l'avance.
+- **`missionAlerts` chargé une seule fois au montage**, pas rafraîchi par `afterMutation` (contrairement
+  à `synchronizationState`/`items`) — aucun code de ce repo n'écrit jamais dans `mission_alerts`
+  actuellement, donc rien ne changerait entre deux lectures dans une même session ; à revisiter si
+  un futur producteur d'alertes apparaît.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,
