@@ -1089,6 +1089,40 @@
   refusée (ex. item encore actif détecté entre la dérivation de l'écran et le clic), plutôt
   qu'un échec silencieux.
 
+## Sprint 019 — Mode développement (2026-08-03)
+
+- **Choisi comme prochain sprint avec le propriétaire** (alternative écartée : Sprint 017 partie
+  2/N, capteurs réels — plus gros, nouveaux modules natifs). Contrairement à ce que son nom
+  suggère, ce sprint **ne dépendait pas** des capteurs réels : le simulateur GPS existait déjà
+  depuis le Sprint 011-012 (`createGpsSimulator`), jamais câblé faute d'appelant — `DevScreen` en
+  devient le premier vrai appelant.
+- **Barrière d'accès = `__DEV__` (flag natif React Native), pas un système de rôles** : ce repo n'a
+  aucun rôle « développeur »/« admin » (ni côté app ni côté `reca-app`) — en inventer un pour cet
+  écran aurait été une règle métier non validée. `__DEV__` est faux dans un build release, ce qui
+  suffit à l'exigence documentée (« ne doit pas être accessible aux utilisateurs ordinaires »).
+  Point d'entrée = le hamburger de `AppHeader` (`onMenu`, no-op partout ailleurs depuis la refonte
+  visuelle) — pas de nouvelle UI visible en production.
+- **Piège découvert en écrivant le test d'intégration `dev.gps`** : la mission de démo
+  (`seedDemoMission.ts`) n'a **aucune coordonnée** (`latitude`/`longitude: null` pour tous les
+  items) — le `useEffect` de `MissionContext` qui appelle `gpsEngine.setActiveResidence` a un garde
+  explicite `latitude !== null && longitude !== null`, donc le GPS Engine n'a **jamais** de
+  résidence active pour cette mission tant qu'elle n'a pas de coordonnées. Un premier
+  `dev.gps.moveTo(...)` est donc un no-op silencieux pour le moteur — mais son `afterMutation`
+  interne recharge quand même les items, ce qui, une fois les coordonnées présentes en base,
+  ré-arme l'effet et arme enfin le moteur pour l'appel suivant. **À garder en tête si un futur test
+  ou écran veut simuler le GPS sur la mission de démo** : il faut écrire les coordonnées dans la
+  DB d'abord (comme le fait déjà `fetchAssignedMission.ts` pour une vraie mission Supabase), pas
+  seulement appeler le simulateur.
+- **« Tester les transitions » réalisé via le simulateur GPS**, pas via des boutons qui
+  appelleraient directement les commandes internes du State Machine (`enterApproach`/`enterWork`/…)
+  — plus fidèle à ce qui se passe réellement en production (aucune transition ne se produit sans
+  passer par le GPS Engine), n'invente aucun raccourci qui n'existe pas ailleurs dans l'app.
+- **`STUB_NETWORK_STATUS` (constante figée) remplacé par une ref mutable** (`networkOverrideRef`,
+  toujours partagée par Sync et Offline comme avant — un seul signal réseau "pas encore réel" dans
+  toute l'app, pas deux inventés indépendamment). `dev.setNetworkOverride(null)` restaure le
+  comportement d'origine (toujours en ligne) — jamais un changement silencieux de comportement pour
+  le reste de l'app quand le mode dev n'est pas utilisé.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,

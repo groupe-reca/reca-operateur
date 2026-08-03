@@ -41,9 +41,15 @@ type Props = {
   onReportProblem?: () => void;
   onResolveProblem?: () => void;
   onSkipItem?: () => void;
+  // Sprint 019 — the header's hamburger has never had a real destination
+  // (Mission/Plus/Alertes are still placeholders, docs/11). The only real
+  // caller today is the dev-only "Développement" screen (LiveMissionScreen,
+  // gated by `__DEV__`) — no-op default keeps every other caller/mock
+  // unchanged.
+  onMenu?: () => void;
 };
 
-export function MissionScreen({ state, onReportProblem, onResolveProblem, onSkipItem }: Props) {
+export function MissionScreen({ state, onReportProblem, onResolveProblem, onSkipItem, onMenu }: Props) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MissionMapViewHandle>(null);
   const handleRecenter = () => mapRef.current?.recenter();
@@ -66,7 +72,7 @@ export function MissionScreen({ state, onReportProblem, onResolveProblem, onSkip
           { paddingTop: insets.top + spacing.sm, paddingLeft: insets.left + screenMargin, paddingRight: insets.right + screenMargin },
         ]}
       >
-        <AppHeader onMenu={() => {}} onAlerts={() => {}} alertsCount={state.alerts.length} syncState={state.mission.syncState} />
+        <AppHeader onMenu={onMenu ?? (() => {})} onAlerts={() => {}} alertsCount={state.alerts.length} syncState={state.mission.syncState} />
         <MissionCardCompact
           missionId={state.mission.missionId}
           secteur={state.mission.secteur}

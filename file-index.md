@@ -63,10 +63,12 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - `src/app/` — composition racine (providers, thème, montage). Vide.
 - `src/screens/`
   - `LiveMissionScreen.tsx` (Sprint 017 partie 1/N, 2026-08-02, **nouveau point d'entrée réel** ;
-    étendu Sprint 018) — `useMissionContext()` → `deriveMissionScreenState(ctx, new Date())`
+    étendu Sprints 018/019) — `useMissionContext()` → `deriveMissionScreenState(ctx, new Date())`
     (mémoïsé sur les champs utiles, pas sur `ctx` entier) → `MissionScreen`. Essaie d'abord
     `deriveEndOfMissionState(ctx, new Date())` (Sprint 018) : non nul → rend `EndOfMissionScreen`
-    (mission éligible à la fermeture) au lieu du repli générique. Repli minimal texte pendant
+    (mission éligible à la fermeture) au lieu du repli générique. Si `__DEV__ && devScreenOpen`
+    (Sprint 019, état local mis à `true` via `onMenu` du header — jamais en build release), rend
+    `DevScreen` à la place de tout le reste, priorité la plus haute. Repli minimal texte pendant
     `loading` ou quand aucune résidence active/problème/fin de mission n'existe (le vrai écran
     « Aucune mission », `docs/11` Phase 11, reste hors scope). Câble `onResolveProblem`/`onSkipItem`
     aux commandes réelles du contexte ; **`onReportProblem` volontairement sans effet** — aucune
@@ -93,12 +95,23 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     Supabase/State Machine direct. Résumé + résidences à reprendre + `SyncIndicator`/opérations en
     attente + bouton « Fermer la mission » (confirmation locale : devient « Mission fermée » après
     succès, pas un blocage réseau).
+  - `DevScreen.tsx` (Sprint 019, testé `tests/devScreen.test.tsx`) — écran « Développement »
+    (`docs/11` Écrans finaux), gardé par `__DEV__` côté appelant (`LiveMissionScreen.tsx`), pas de
+    logique d'accès ici. Props `ctx: MissionContextValue`/`onClose`. Sections États (`dev.getStates()`)
+    /Simuler GPS (`dev.gps` — cible = `activeMissionItem`/premier `nextMissionItems`, boutons
+    Aller à la cible/+5s/+30s/Perdre-Retrouver le signal ; « tester les transitions » se fait via
+    ce simulateur, pas des boutons State Machine bruts)/Simuler réseau (`dev.setNetworkOverride`)/
+    Seuils (`dev.thresholds`)/File (`dev.getSyncQueue()`)/Événements (`dev.getEvents()`)/Historique
+    des transitions (`dev.getTransitions()`) + bouton Exporter (`dev.exportLogs()` →
+    `Share.share()`, API core React Native).
   - `MissionScreen.tsx` — **écran produit**, désormais **piloté par les données**
     (Sprint 004) : accepte une prop `state: MissionScreenState` + 3 callbacks optionnels
-    (`onReportProblem`/`onResolveProblem`/`onSkipItem`, Sprint 017 partie 1/N, no-op par défaut),
-    assemble tous les composants, mise en page fixe (pas de scroll), rend
-    `CurrentResidenceProgressCard` ou `ProblemStateCard` selon l'état, groupe les alertes
-    (`AlertsRow` interne : 1 complète + chip « +N »).
+    (`onReportProblem`/`onResolveProblem`/`onSkipItem`, Sprint 017 partie 1/N, no-op par défaut) +
+    `onMenu?` (Sprint 019, câblé à `AppHeader` — remplace le `() => {}` en dur, seul appelant réel
+    aujourd'hui = `LiveMissionScreen.tsx` ouvrant `DevScreen` en `__DEV__`), assemble tous les
+    composants, mise en page fixe (pas de scroll), rend `CurrentResidenceProgressCard` ou
+    `ProblemStateCard` selon l'état, groupe les alertes (`AlertsRow` interne : 1 complète + chip
+    « +N »).
   - `missionScreenState.ts` (Sprint 004) — type `MissionScreenState`/`ActiveResidenceState`/
     `MissionScreenAlert`, source de vérité de ce qui varie entre les 4 variantes opérationnelles.
     Champ `map` (Sprint 005-006) : position simulée + 5 résidences (`n`/`rank`/`coordinate`) +
@@ -219,8 +232,8 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     intrinsèquement basée sur des composants).
 - `src/context/`
   - `MissionContext.tsx` (Sprint 007-008, réécrit Sprint 017 partie 1/N — 2026-08-02 ; étendu
-    Sprint 018) — `MissionProvider`/`useMissionContext()` : au montage, instancie les 5 moteurs
-    réels (State Machine/GPS/Sync/Offline/Voice, refs stables) puis charge (migrations →
+    Sprints 018/019) — `MissionProvider`/`useMissionContext()` : au montage, instancie les 5
+    moteurs réels (State Machine/GPS/Sync/Offline/Voice, refs stables) puis charge (migrations →
     **`fetchAssignedMission` si `employeeId` fourni, sinon/en repli seed démo si vide** → mission
     sélectionnée sans ambiguïté via `assigned?.id ?? missions[0]?.id` → session ouverte →
     `offlineEngine.checkConnectivity()`/`syncEngine.recoverOnStartup()`/`runSyncCycle()`). Expose
@@ -230,11 +243,18 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     `skipItem`/**`closeMission`** (Sprint 018 : `requestMissionComplete`, puis — contrairement aux
     3 autres — recharge aussi `mission` via `missionRepo.getById`, pas seulement les items, sinon
     l'écran ne verrait jamais son propre succès ; retourne le `TransitionResult` brut pour que
-    l'écran affiche une vraie erreur). `deriveActiveAndNext` (exporté, pur, testé) : résidence
-    active + suivantes, indépendant de React/DB — utilise `isActiveItemState` du State Machine
-    (Sprint 009-010) plutôt qu'une constante dupliquée. `getDbOverride`/`syncTransportOverride`/
-    `speakerOverride` injectables (tests uniquement — la règle « jamais de vrai réseau touché en
-    test » s'applique aussi au Sync/Voice ici, voir `tests/missionContext.test.tsx`).
+    l'écran affiche une vraie erreur) + **`dev`** (Sprint 019, `DevTools` — `gps` enveloppe
+    `createGpsSimulator` autour de `gpsEngineRef` avec rechargement `afterMutation` intégré ;
+    `thresholds` = `DEFAULT_GPS_THRESHOLDS` telle quelle, jamais overridée ; `getStates`/`getEvents`
+    agrègent ce que les 4 moteurs exposent déjà ; `getSyncQueue`/`getTransitions` lisent les
+    repositories directement ; `setNetworkOverride` pilote `networkOverrideRef` — remplace
+    l'ancienne constante figée `STUB_NETWORK_STATUS`, toujours partagée Sync/Offline ; `exportLogs`
+    assemble tout en JSON pour `Share.share()`). `deriveActiveAndNext` (exporté, pur, testé) :
+    résidence active + suivantes, indépendant de React/DB — utilise `isActiveItemState` du State
+    Machine (Sprint 009-010) plutôt qu'une constante dupliquée. `getDbOverride`/
+    `syncTransportOverride`/`speakerOverride` injectables (tests uniquement — la règle « jamais de
+    vrai réseau touché en test » s'applique aussi au Sync/Voice ici, voir
+    `tests/missionContext.test.tsx`).
   - `AuthContext.tsx` (2026-08-02) — `AuthProvider`/`useAuth()` : session Supabase Auth
     (email/mot de passe), résout `employeeId` (`employees.user_id = auth.uid()`) une fois par
     session. Seul point d'entrée authentification — aucun composant n'appelle
@@ -364,22 +384,31 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   s'il ne peut pas être `activeMissionItem`, priorité PROBLEM sur un item actif si les deux
   existent, `offline` présent seulement hors `ONLINE`, résidences carte plafonnées à 5 en filtrant
   celles sans coordonnées.
-- `tests/missionContext.test.tsx` (Sprint 017 partie 1/N, 2026-08-02 ; étendu Sprint 018) — 6 tests
-  d'intégration réelle (`MissionProvider` sur un faux `Db`/transport Sync/`Speaker` injectés —
-  jamais de vrai réseau/synthèse, voir `getDbOverride`/`syncTransportOverride`/`speakerOverride`) :
-  chargement de la mission de démo (premier item EN_ROUTE actif), `reportProblem` → `PROBLEM` +
-  `activeMissionItem` redevient `null`, `resolveProblem` → retour à un état actif, `skipItem` →
-  `SKIPPED` + opération de sync mise en file, `closeMission` refusé tant qu'un item
-  `WAITING`/actif subsiste, `closeMission` réussit une fois tous les items résolus (`SKIPPED`
-  autorisé) — simule le `requestMissionStart` READY→IN_PROGRESS directement via une seconde
-  instance de State Machine sur le même faux `Db` plutôt que d'exposer une commande de contexte
-  sans appelant réel (le « démarrer » de l'écran Mission active, `docs/11`, reste hors scope ;
-  une vraie mission Supabase arrive déjà `IN_PROGRESS`, voir `fetchAssignedMission.ts`). Mutations
-  enveloppées dans `act()` (State Machine → contexte → re-render, comme tout hook React testé).
+- `tests/missionContext.test.tsx` (Sprint 017 partie 1/N, 2026-08-02 ; étendu Sprints 018/019) —
+  8 tests d'intégration réelle (`MissionProvider` sur un faux `Db`/transport Sync/`Speaker`
+  injectés — jamais de vrai réseau/synthèse, voir `getDbOverride`/`syncTransportOverride`/
+  `speakerOverride`) : chargement de la mission de démo (premier item EN_ROUTE actif),
+  `reportProblem` → `PROBLEM` + `activeMissionItem` redevient `null`, `resolveProblem` → retour à
+  un état actif, `skipItem` → `SKIPPED` + opération de sync mise en file, `closeMission` refusé
+  tant qu'un item `WAITING`/actif subsiste, `closeMission` réussit une fois tous les items résolus
+  (`SKIPPED` autorisé) — simule le `requestMissionStart` READY→IN_PROGRESS directement via une
+  seconde instance de State Machine sur le même faux `Db` plutôt que d'exposer une commande de
+  contexte sans appelant réel (le « démarrer » de l'écran Mission active, `docs/11`, reste hors
+  scope ; une vraie mission Supabase arrive déjà `IN_PROGRESS`, voir `fetchAssignedMission.ts`),
+  `dev.setNetworkOverride(false)`/`(null)` force `offlineState` OFFLINE puis RECOVERING,
+  `dev.gps.moveTo`/`advanceTime` déclenchent une vraie transition EN_ROUTE→APPROACHING via le State
+  Machine réel (écrit d'abord les coordonnées de l'item actif dans le faux `Db`, la mission de démo
+  n'en a pas — voir `memory.md`). Mutations enveloppées dans `act()` (State Machine → contexte →
+  re-render, comme tout hook React testé).
 - `tests/deriveEndOfMissionState.test.ts` (Sprint 018, 2026-08-02) — 7 tests purs : `null` sans
   mission, `null` mission déjà `COMPLETED`, `null` tant qu'un item `WAITING` ou actif subsiste,
   éligible avec un item `PROBLEM`/`SKIPPED` restant (n'empêche pas la fermeture), décompte/durée/
   état de sync/opérations en attente dérivés sans valeur inventée.
+- `tests/devScreen.test.tsx` (Sprint 019, 2026-08-03) — 3 tests de rendu (`ctx: MissionContextValue`
+  factice, `dev` avec des jest.fn()) : sections États/Seuils affichent bien `dev.getStates()`/
+  `dev.thresholds`, message honnête « Aucune résidence à simuler » sans coordonnées, bouton
+  « Fermer » appelle `onClose`, bouton « Aller à la cible » appelle `dev.gps.moveTo` avec les
+  coordonnées de la résidence cible une fois disponible.
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)

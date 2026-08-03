@@ -1,14 +1,25 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { systemClock } from '@/domain/clock';
-import type { Mission, MissionItem, OperatorSession } from '@/domain/entities';
+import type { Mission, MissionItem, OperatorSession, StateTransition, SyncOperation } from '@/domain/entities';
 import { generateId } from '@/domain/id';
-import { createGpsEngine, type GpsEngine } from '@/engines/gps';
-import { createOfflineEngine, type OfflineEngine, type OfflineEngineState } from '@/engines/offline';
+import {
+  createGpsEngine,
+  createGpsSimulator,
+  DEFAULT_GPS_THRESHOLDS,
+  type GpsCoordinate,
+  type GpsEngine,
+  type GpsEngineEvent,
+  type GpsFixOptions,
+  type GpsSimulator,
+  type GpsThresholds,
+} from '@/engines/gps';
+import { createOfflineEngine, type OfflineEngine, type OfflineEngineEvent, type OfflineEngineState } from '@/engines/offline';
 import { createStateMachine, isActiveItemState, type StateMachine, type TransitionResult } from '@/engines/state-machine';
 import { createSynchronizationEngine, type SynchronizationEngine } from '@/engines/sync';
-import type { NetworkStatusProvider, SynchronizationState } from '@/engines/sync/types';
+import type { NetworkStatusProvider, SyncEngineEvent, SynchronizationState } from '@/engines/sync/types';
 import { createVoiceEngine, type VoiceEngine } from '@/engines/voice';
+import type { VoiceEngineEvent } from '@/engines/voice/types';
 import { fetchAssignedMission } from '@/integrations/supabase/fetchAssignedMission';
 import { createSupabaseSyncTransport } from '@/integrations/supabase/supabaseSyncTransport';
 import { createExpoSpeaker } from '@/integrations/voice/expoSpeaker';
@@ -16,6 +27,8 @@ import { getDb } from '@/persistence/db';
 import { createMissionItemRepository } from '@/persistence/repositories/missionItemRepository';
 import { createMissionRepository } from '@/persistence/repositories/missionRepository';
 import { createOperatorSessionRepository } from '@/persistence/repositories/operatorSessionRepository';
+import { createStateTransitionRepository } from '@/persistence/repositories/stateTransitionRepository';
+import { createSyncOperationRepository } from '@/persistence/repositories/syncOperationRepository';
 import { seedDemoMissionIfEmpty } from '@/persistence/seedDemoMission';
 import type { Db } from '@/persistence/types';
 
@@ -64,6 +77,51 @@ export type MissionContextValue = {
   // void like the other commands) so the screen can surface a real error
   // instead of failing silently.
   closeMission(): Promise<TransitionResult>;
+  // Sprint 019 — docs/11 Phase 11 "Développement" (simuler GPS/réseau, voir
+  // états/file/événements/seuils, exporter les journaux). Always present in
+  // the value (the data itself isn't sensitive) — access control is the
+  // caller's job (`__DEV__`, see LiveMissionScreen.tsx), not this context's.
+  dev: DevTools;
+};
+
+// Wraps the Sprint 011-012 GPS simulator: each call also reloads the
+// context's own state afterwards (same `afterMutation` every other command
+// uses) so a caller never has to know the simulator mutated the DB via the
+// State Machine underneath it.
+export type DevGpsSimulator = {
+  moveTo(coordinate: GpsCoordinate, options?: GpsFixOptions): Promise<void>;
+  advanceTime(seconds: number): Promise<void>;
+  loseSignal(): void;
+  recoverSignal(coordinate: GpsCoordinate, options?: GpsFixOptions): Promise<void>;
+};
+
+export type DevStatesSnapshot = {
+  missionStatus: Mission['status'] | null;
+  itemsByStatus: Record<string, number>;
+  gpsPhase: string | null;
+  synchronizationState: SynchronizationState;
+  offlineState: OfflineEngineState;
+};
+
+export type DevEventsSnapshot = {
+  gps: GpsEngineEvent[];
+  sync: SyncEngineEvent[];
+  offline: OfflineEngineEvent[];
+  voice: VoiceEngineEvent[];
+};
+
+export type DevTools = {
+  gps: DevGpsSimulator;
+  // MissionContext never configures an override, so this is already the
+  // GPS Engine's real active configuration — nothing to recompute.
+  thresholds: GpsThresholds;
+  getStates(): DevStatesSnapshot;
+  getEvents(): DevEventsSnapshot;
+  getSyncQueue(): Promise<SyncOperation[]>;
+  getTransitions(): Promise<StateTransition[]>;
+  // `null` = real signal (always-online stub, current behaviour unchanged).
+  setNetworkOverride(online: boolean | null): Promise<void>;
+  exportLogs(): Promise<string>;
 };
 
 const MissionReactContext = createContext<MissionContextValue | null>(null);
@@ -82,13 +140,6 @@ export function deriveActiveAndNext(items: MissionItem[]): {
     .sort((a, b) => a.ordre - b.ordre);
   return { activeMissionItem, nextMissionItems };
 }
-
-// docs/08/docs/07 — real sensor deferred (see GpsState above), same
-// principle applied here: a simple always-online stub rather than the real
-// NetInfo integration. Shared by the Sync and Offline engines so there is
-// only one "not real yet" network signal in the app, not two independently
-// invented ones.
-const STUB_NETWORK_STATUS: NetworkStatusProvider = { isOnline: () => true };
 
 type Props = {
   children: ReactNode;
@@ -134,9 +185,23 @@ export function MissionProvider({
   const dbRef = useRef<Db | null>(null);
   const stateMachineRef = useRef<StateMachine | null>(null);
   const gpsEngineRef = useRef<GpsEngine | null>(null);
+  const gpsSimulatorRef = useRef<GpsSimulator | null>(null);
   const syncEngineRef = useRef<SynchronizationEngine | null>(null);
   const offlineEngineRef = useRef<OfflineEngine | null>(null);
   const voiceEngineRef = useRef<VoiceEngine | null>(null);
+
+  // Sprint 019 — real sensor deferred (see GpsState above), same principle
+  // applied here: a simple always-online stub rather than the real NetInfo
+  // integration. Shared by the Sync and Offline engines so there is only one
+  // "not real yet" network signal in the app, not two independently invented
+  // ones. `null` override = the stub's original always-online behaviour,
+  // unchanged; the dev-only "Développement" screen (docs/11) is the only
+  // caller that ever sets it to something else.
+  const networkOverrideRef = useRef<boolean | null>(null);
+  const networkStatus = useMemo<NetworkStatusProvider>(
+    () => ({ isOnline: () => networkOverrideRef.current ?? true }),
+    []
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -152,13 +217,14 @@ export function MissionProvider({
       const stateMachine = createStateMachine(db, systemClock);
       stateMachineRef.current = stateMachine;
       gpsEngineRef.current = createGpsEngine({ stateMachine, clock: systemClock });
+      gpsSimulatorRef.current = createGpsSimulator(gpsEngineRef.current, systemClock);
       syncEngineRef.current = createSynchronizationEngine({
         db,
         clock: systemClock,
         transport: (syncTransportOverride ?? createSupabaseSyncTransport)(),
-        network: STUB_NETWORK_STATUS,
+        network: networkStatus,
       });
-      offlineEngineRef.current = createOfflineEngine({ clock: systemClock, networkStatus: STUB_NETWORK_STATUS });
+      offlineEngineRef.current = createOfflineEngine({ clock: systemClock, networkStatus });
       voiceEngineRef.current = createVoiceEngine({ clock: systemClock, speaker: (speakerOverride ?? createExpoSpeaker)() });
 
       let assigned: Awaited<ReturnType<typeof fetchAssignedMission>> = null;
@@ -221,7 +287,7 @@ export function MissionProvider({
     return () => {
       cancelled = true;
     };
-  }, [getDbOverride, employeeId, syncTransportOverride, speakerOverride]);
+  }, [getDbOverride, employeeId, syncTransportOverride, speakerOverride, networkStatus]);
 
   const { activeMissionItem, nextMissionItems } = useMemo(() => deriveActiveAndNext(items), [items]);
 
@@ -325,6 +391,104 @@ export function MissionProvider({
     return result;
   }
 
+  // Sprint 019 — see DevTools/DevGpsSimulator above for the "why" of each
+  // piece. `moveTo`/`advanceTime`/`recoverSignal` all reload the context
+  // afterwards, exactly like reportProblem/resolveProblem/skipItem, since
+  // the simulator can trigger real State Machine transitions underneath it.
+  const devGps: DevGpsSimulator = {
+    async moveTo(coordinate, options) {
+      await gpsSimulatorRef.current?.moveTo(coordinate, options);
+      if (mission) await afterMutation(mission.id);
+    },
+    async advanceTime(seconds) {
+      await gpsSimulatorRef.current?.advanceTime(seconds);
+      if (mission) await afterMutation(mission.id);
+    },
+    loseSignal() {
+      gpsSimulatorRef.current?.loseSignal();
+    },
+    async recoverSignal(coordinate, options) {
+      await gpsSimulatorRef.current?.recoverSignal(coordinate, options);
+      if (mission) await afterMutation(mission.id);
+    },
+  };
+
+  function getDevStates(): DevStatesSnapshot {
+    return {
+      missionStatus: mission?.status ?? null,
+      itemsByStatus: items.reduce<Record<string, number>>((acc, item) => {
+        acc[item.status] = (acc[item.status] ?? 0) + 1;
+        return acc;
+      }, {}),
+      gpsPhase: gpsEngineRef.current?.getPhase() ?? null,
+      synchronizationState,
+      offlineState,
+    };
+  }
+
+  function getDevEvents(): DevEventsSnapshot {
+    return {
+      gps: gpsEngineRef.current?.getEvents() ?? [],
+      sync: syncEngineRef.current?.getEvents() ?? [],
+      offline: offlineEngineRef.current?.getEvents() ?? [],
+      voice: voiceEngineRef.current?.getEvents() ?? [],
+    };
+  }
+
+  async function getDevSyncQueue(): Promise<SyncOperation[]> {
+    const db = dbRef.current;
+    if (!db) return [];
+    return createSyncOperationRepository(db).getAll();
+  }
+
+  async function getDevTransitions(): Promise<StateTransition[]> {
+    const db = dbRef.current;
+    if (!db) return [];
+    return createStateTransitionRepository(db).getAll();
+  }
+
+  async function setNetworkOverride(online: boolean | null): Promise<void> {
+    networkOverrideRef.current = online;
+    const offlineEngine = offlineEngineRef.current;
+    const syncEngine = syncEngineRef.current;
+    if (offlineEngine) {
+      await offlineEngine.checkConnectivity();
+      setOfflineState(offlineEngine.getState());
+    }
+    if (syncEngine) {
+      await syncEngine.runSyncCycle();
+      setSynchronizationState(await syncEngine.getSynchronizationState());
+    }
+  }
+
+  async function exportLogs(): Promise<string> {
+    const [syncQueue, transitions] = await Promise.all([getDevSyncQueue(), getDevTransitions()]);
+    return JSON.stringify(
+      {
+        exportedAt: systemClock.now().toISOString(),
+        missionId: mission?.id ?? null,
+        states: getDevStates(),
+        events: getDevEvents(),
+        thresholds: DEFAULT_GPS_THRESHOLDS,
+        syncQueue,
+        transitions,
+      },
+      null,
+      2
+    );
+  }
+
+  const dev: DevTools = {
+    gps: devGps,
+    thresholds: DEFAULT_GPS_THRESHOLDS,
+    getStates: getDevStates,
+    getEvents: getDevEvents,
+    getSyncQueue: getDevSyncQueue,
+    getTransitions: getDevTransitions,
+    setNetworkOverride,
+    exportLogs,
+  };
+
   const value: MissionContextValue = {
     loading,
     mission,
@@ -338,6 +502,7 @@ export function MissionProvider({
     reportProblem,
     resolveProblem,
     skipItem,
+    dev,
     closeMission,
   };
 
