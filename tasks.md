@@ -376,8 +376,9 @@
     mission réelle actuellement dans l'état éligible (Mission #9 déjà `COMPLETED`) — suivi ouvert,
     même pattern que le Sprint 017.
   - [x] **Sprint 019 — Mode développement** (branche `sprint-019-mode-developpement`,
-    2026-08-03). Choisi comme prochain sprint avec le propriétaire (alternative écartée : Sprint
-    017 partie 2/N, capteurs réels — plus gros). Contrairement à ce que son nom suggère, ne
+    2026-08-03, PR : https://github.com/groupe-reca/reca-operateur/pull/3). Choisi comme prochain
+    sprint avec le propriétaire (alternative écartée : Sprint 017 partie 2/N, capteurs réels —
+    plus gros). Contrairement à ce que son nom suggère, ne
     dépendait pas des capteurs réels : le simulateur GPS existait déjà (Sprint 011-012,
     `createGpsSimulator`), jamais câblé à `MissionContext` faute d'appelant — ce sprint devient son
     appelant. **Barrière d'accès** : pas de système de rôles dans ce repo (en inventer un aurait
