@@ -403,7 +403,8 @@
     build natif requis (aucune dépendance native ajoutée), mais pas testé physiquement sur
     l'appareil cette passe — suivi ouvert, même pattern que les Sprints 017/018.
   - [x] **Sprint 017 (partie 2/N) — Capteurs réels + écran « Aucune mission »** (branche
-    `sprint-017-partie-2-capteurs-reels`, 2026-08-03). Dernier gros morceau différé depuis le
+    `sprint-017-partie-2-capteurs-reels`, 2026-08-03, PR :
+    https://github.com/groupe-reca/reca-operateur/pull/4). Dernier gros morceau différé depuis le
     Sprint 011-012 (« logique d'abord, capteur ensuite ») — choisi comme prochain sprint avec le
     propriétaire (seule alternative restante de la Phase 11 non couverte par 017-1/018/019).
     **`expo-location`** (foreground uniquement — aucune exigence de suivi arrière-plan documentée
