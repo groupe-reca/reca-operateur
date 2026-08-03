@@ -21,8 +21,8 @@
   invisible dans les boutons d'action du panneau Problème (`Txt` en enfant direct de
   `PressableScale` imbriqué dans l'Animated.View Reanimated de `BottomSheet` — voir memory.md).
   `tsc`/`eslint`/`jest` (91/91)/`expo-doctor` (20/20) verts.
-- [ ] **Suivi ouvert — bouton UI « Fermer la mission »** persiste (non lié à cette refonte,
-  voir suivi antérieur du câblage Supabase).
+- [x] **Suivi ouvert — bouton UI « Fermer la mission »** : livré au Sprint 018 —
+  `EndOfMissionScreen`/`MissionContext.closeMission()`.
 - [ ] **Suivi ouvert — contenu du bottom sheet en position ouverte** : au-delà des infos déjà
   exposées par `missionScreenState.ts`, le spec évoque photos/historique détaillé — données
   serveur qui n'existent pas encore, à étoffer seulement si un besoin réel se présente.
@@ -312,7 +312,8 @@
   app sans régression sur device (TECNO KL4) après le nouveau build natif.
 - [ ] **Sprint 017-019 — Auth, mission assignée, fin de mission, mode développement** (Phase 11).
   - [x] **Sprint 017 (partie 1/N) — Câblage réel de MissionContext** (branche
-    `sprint-017-mission-context-wiring`, 2026-08-02). Découpage validé avec le propriétaire : cette
+    `sprint-017-mission-context-wiring`, 2026-08-02, PR :
+    https://github.com/groupe-reca/reca-operateur/pull/1). Découpage validé avec le propriétaire : cette
     passe câble uniquement les 5 moteurs existants (State Machine, GPS, Sync, Offline, Voice) dans
     `MissionContext.tsx` et remplace les mocks statiques de `MissionScreen` par les vraies données
     — pas de nouveaux écrans, pas de capteurs natifs réels (GPS/réseau système restent injectés en
@@ -339,6 +340,37 @@
     complétée) — comportement voulu, pas un bug. Suivi ouvert non bloquant : revalider avec une
     mission ayant encore des résidences actives pour voir `MissionScreen` alimenté en conditions
     réelles.
+  - [x] **Sprint 018 — Fin de mission** (branche `sprint-018-fin-de-mission`, 2026-08-02). Choisi
+    comme prochain sprint avec le propriétaire (alternatives écartées : Sprint 017 partie 2/N
+    capteurs réels — plus gros ; Sprint 019 mode développement — moins utile sans capteurs réels à
+    simuler). Ferme le suivi ouvert « bouton UI Fermer la mission » (`requestMissionComplete`,
+    déjà câblé côté serveur depuis le câblage Supabase, restait sans appelant UI) et livre l'écran
+    « Fin de mission » de `docs/11` Écrans finaux. **`deriveEndOfMissionState.ts`** (nouveau, pur,
+    testé) : `null` sauf mission chargée, `status !== 'COMPLETED'`, aucun item `WAITING`/actif
+    restant (même condition que `requestMissionComplete`, lue de `isActiveItemState` — jamais
+    dupliquée) ; un item `PROBLEM`/`SKIPPED` restant **n'empêche pas** la fermeture (cas
+    `terminee_avec_anomalies`, règle déjà confirmée). **`EndOfMissionScreen.tsx`** (nouveau,
+    présentation pure) : résumé/résidences à reprendre/état de sync/opérations en attente + bouton
+    « Fermer la mission » (confirmation locale : devient « Mission fermée » après succès, pas
+    bloqué par le réseau). **`MissionContext.closeMission()`** (nouveau) : appelle
+    `requestMissionComplete`, puis recharge `mission` (pas seulement les items, contrairement à
+    `afterMutation` existant — sinon l'écran ne verrait jamais son propre succès), retourne le
+    `TransitionResult` brut pour un vrai message d'erreur. `LiveMissionScreen.tsx` essaie
+    `deriveEndOfMissionState` avant le repli générique existant. **Gap découvert en testant** (pas
+    un bug introduit ici) : la mission de démo reste `READY` pour toujours dans cet environnement
+    — rien ne l'a jamais fait passer `IN_PROGRESS` (le bouton « démarrer » de l'écran Mission
+    active, `docs/11`, reste hors scope), et `requestMissionComplete` exige `IN_PROGRESS`. Une
+    vraie mission Supabase n'a pas ce problème (`fetchAssignedMission` la mappe déjà `IN_PROGRESS`
+    quand `statut === 'en_cours'`) — documenté comme limitation connue de l'environnement démo,
+    pas corrigé ici (inventer un démarrage automatique aurait été une règle métier non validée).
+    **Hors scope, différé** : écran « Aucune mission » dédié, écrans Paramètres/Développement
+    (Sprint 019), capteurs GPS/réseau réels (inchangé), export/impression du résumé, annulation de
+    la fermeture (`CANCELLED` ne doit jamais être produit par l'opérateur). Vérifié :
+    `tsc`/`eslint`/`jest` verts (137/137, 15 suites, dont 7 nouveaux
+    `tests/deriveEndOfMissionState.test.ts` + 2 nouveaux tests d'intégration `closeMission` dans
+    `tests/missionContext.test.tsx`)/`expo-doctor` (20/20). **Non vérifié sur device** : aucune
+    mission réelle actuellement dans l'état éligible (Mission #9 déjà `COMPLETED`) — suivi ouvert,
+    même pattern que le Sprint 017.
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 
 ## À vérifier
@@ -457,11 +489,8 @@
   module natif — le dev build existant sur l'appareil ne le contenait pas
   (`NativeModule: AsyncStorage is null` au premier lancement), a nécessité un nouveau
   `expo prebuild` + `gradlew installDebug` (voir `memory.md` pour les pièges de build rencontrés).
-- [ ] **Suivi ouvert — bouton « Fermer la mission »** : `requestMissionComplete` (State Machine,
-  Sprint 009-010) est déjà câblé côté serveur par cette passe (`SupabaseSyncTransport` sait
-  pousser `Mission.status === 'COMPLETED'` → `terminee`/`terminee_avec_anomalies`), mais **aucune
-  UI ne l'appelle encore** — `Mission`/`Plus` restent des onglets placeholders (Sprint 003/004).
-  Nécessite un vrai écran avant de fermer cette tâche.
+- [x] **Suivi ouvert — bouton « Fermer la mission »** : livré au Sprint 018 —
+  `EndOfMissionScreen`/`MissionContext.closeMission()`, voir détail dans la section Sprint 018.
 - [x] **Vérification sur device avec une vraie Mission** (2026-08-02) : fait, voir ci-dessus —
   Mission #9 confirmée téléchargée avec succès. **Reste ouvert** : n'a vérifié que le
   téléchargement (lecture) ; la synchronisation retour (écriture — transitions locales vers

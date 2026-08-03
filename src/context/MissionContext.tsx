@@ -5,7 +5,7 @@ import type { Mission, MissionItem, OperatorSession } from '@/domain/entities';
 import { generateId } from '@/domain/id';
 import { createGpsEngine, type GpsEngine } from '@/engines/gps';
 import { createOfflineEngine, type OfflineEngine, type OfflineEngineState } from '@/engines/offline';
-import { createStateMachine, isActiveItemState, type StateMachine } from '@/engines/state-machine';
+import { createStateMachine, isActiveItemState, type StateMachine, type TransitionResult } from '@/engines/state-machine';
 import { createSynchronizationEngine, type SynchronizationEngine } from '@/engines/sync';
 import type { NetworkStatusProvider, SynchronizationState } from '@/engines/sync/types';
 import { createVoiceEngine, type VoiceEngine } from '@/engines/voice';
@@ -56,6 +56,14 @@ export type MissionContextValue = {
   reportProblem(missionItemId: string, code: string, note: string | null): Promise<void>;
   resolveProblem(missionItemId: string, target: 'EN_ROUTE' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED'): Promise<void>;
   skipItem(missionItemId: string): Promise<void>;
+  // Sprint 018 — "Fermer la mission" (docs/11 Phase 11, écran Fin de
+  // mission). Delegates to the same requestMissionComplete already built at
+  // Sprint 009-010 (refuses if a MissionItem is still WAITING or active, a
+  // PROBLEM/SKIPPED item does NOT block it — see
+  // deriveEndOfMissionState.ts). Returns the raw TransitionResult (not just
+  // void like the other commands) so the screen can surface a real error
+  // instead of failing silently.
+  closeMission(): Promise<TransitionResult>;
 };
 
 const MissionReactContext = createContext<MissionContextValue | null>(null);
@@ -292,6 +300,31 @@ export function MissionProvider({
     }
   }
 
+  async function reloadMission(missionId: string): Promise<void> {
+    const db = dbRef.current;
+    if (!db) return;
+    const missionRepo = createMissionRepository(db);
+    const updated = await missionRepo.getById(missionId);
+    if (updated) setMission(updated);
+  }
+
+  async function closeMission(): Promise<TransitionResult> {
+    const stateMachine = stateMachineRef.current;
+    if (!stateMachine || !mission) {
+      return { success: false, errorCode: 'MISSION_NOT_FOUND', errorMessage: 'no active mission' };
+    }
+    const result = await stateMachine.requestMissionComplete(mission.id);
+    if (result.success) {
+      // Unlike reportProblem/resolveProblem/skipItem, this mutates the
+      // Mission itself (not just a MissionItem) — afterMutation alone only
+      // reloads items, so `mission.status` must be refreshed separately or
+      // the screen would never observe its own success.
+      await reloadMission(mission.id);
+      await afterMutation(mission.id);
+    }
+    return result;
+  }
+
   const value: MissionContextValue = {
     loading,
     mission,
@@ -305,6 +338,7 @@ export function MissionProvider({
     reportProblem,
     resolveProblem,
     skipItem,
+    closeMission,
   };
 
   return <MissionReactContext.Provider value={value}>{children}</MissionReactContext.Provider>;

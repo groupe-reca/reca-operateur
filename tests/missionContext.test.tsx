@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
+import { systemClock } from '@/domain/clock';
 import type { Speaker } from '@/engines/voice';
+import { createStateMachine } from '@/engines/state-machine';
 import type { SyncOperationOutcome, SyncTransport } from '@/engines/sync/types';
 import type { SyncOperation } from '@/domain/entities';
 import { MissionProvider, useMissionContext } from '@/context/MissionContext';
@@ -36,6 +38,7 @@ function renderMissionContext() {
   const db = createFakeDb();
   const transport = createFakeTransport();
   return {
+    db,
     transport,
     ...renderHook(() => useMissionContext(), {
       wrapper: ({ children }) => (
@@ -120,5 +123,56 @@ describe('MissionContext — real engines wired over a fake DB', () => {
       expect(result.current.allMissionItems.find((i) => i.id === waitingId)?.status).toBe('SKIPPED');
     });
     expect(transport.sent.some((operation) => operation.entityId === waitingId)).toBe(true);
+  });
+
+  it('closeMission refuses while a MissionItem is still WAITING/active', async () => {
+    const { result } = renderMissionContext();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let outcome: Awaited<ReturnType<typeof result.current.closeMission>> | undefined;
+    await act(async () => {
+      outcome = await result.current.closeMission();
+    });
+
+    expect(outcome?.success).toBe(false);
+    expect(result.current.mission?.status).not.toBe('COMPLETED');
+  });
+
+  it('closeMission completes the mission once every item is resolved (SKIPPED/PROBLEM allowed)', async () => {
+    const { result, db } = renderMissionContext();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // The seeded demo Mission starts READY (docs/09 Mission graph: only
+    // IN_PROGRESS -> COMPLETED is allowed). Moving it to IN_PROGRESS is the
+    // "démarrer" action of the "Mission active" screen (docs/11), out of
+    // scope for this pass (see plans.md) — a real Supabase mission already
+    // arrives IN_PROGRESS instead (fetchAssignedMission.ts maps `statut ===
+    // 'en_cours'`), so this simulates that real path directly against the
+    // same fake db rather than exposing an unused context command with no
+    // caller yet.
+    const missionId = result.current.mission?.id as string;
+    await act(async () => {
+      await createStateMachine(db, systemClock).requestMissionStart(missionId);
+    });
+
+    // Skip every item (the active one is EN_ROUTE -> SKIPPED directly
+    // allowed, docs/09 transition graph; the rest are WAITING -> SKIPPED).
+    for (const item of result.current.allMissionItems) {
+      const id = item.id;
+      await act(async () => {
+        await result.current.skipItem(id);
+      });
+      await waitFor(() => {
+        expect(result.current.allMissionItems.find((i) => i.id === id)?.status).toBe('SKIPPED');
+      });
+    }
+
+    let outcome: Awaited<ReturnType<typeof result.current.closeMission>> | undefined;
+    await act(async () => {
+      outcome = await result.current.closeMission();
+    });
+
+    expect(outcome?.success).toBe(true);
+    await waitFor(() => expect(result.current.mission?.status).toBe('COMPLETED'));
   });
 });
