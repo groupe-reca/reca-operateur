@@ -7,8 +7,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAppFonts } from '@/config/theme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { MissionProvider } from '@/context/MissionContext';
+import { LiveMissionScreen } from '@/screens/LiveMissionScreen';
 import { LoginScreen } from '@/screens/LoginScreen';
-import { MissionScreenPreview } from '@/screens/MissionScreenPreview';
 
 // Keep the splash visible until Manrope is loaded (avoids a font flash).
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -26,19 +26,16 @@ function AuthGate() {
     return <LoginScreen />;
   }
 
-  // Sprint 004: MissionScreenPreview (dev-only switcher over the 4
-  // operational variants) is temporarily the entry point, same pattern as
-  // Sprint 002's ComponentGalleryScreen. Swapped back to a single
-  // MissionScreen fed by the real engine once the State Machine exists.
-  //
-  // Sprint 007-008: MissionProvider now wraps the tree (local SQLite
-  // persistence + MissionContext). MissionScreen itself still reads its own
-  // static mocks — see memory.md for the documented scope decision — this
-  // only proves the persistence layer end-to-end via a small debug line in
-  // MissionScreenPreview.
+  // Sprint 017 (partie 1/N) — LiveMissionScreen (real State Machine/GPS/
+  // Sync/Offline/Voice engines via MissionContext) finally replaces
+  // MissionScreenPreview here, honoring the swap promised since Sprint 004
+  // ("reswitché vers un MissionScreen unique piloté par le vrai State
+  // Machine une fois qu'il existera" — redifféré à chaque sprint moteur
+  // depuis). MissionScreenPreview/the 4 static mocks stay in the repo for
+  // reference (same status as ComponentGalleryScreen).
   return (
     <MissionProvider employeeId={auth.employeeId}>
-      <MissionScreenPreview />
+      <LiveMissionScreen />
     </MissionProvider>
   );
 }

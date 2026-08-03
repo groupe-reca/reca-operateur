@@ -1003,6 +1003,60 @@
   d'un `PressableScale` à l'intérieur de `BottomSheet` (ou de tout futur ancêtre animé par
   Reanimated) — toujours en frère, comme le fait déjà `FloatingActionButton`/`VoiceButton`.
 
+## Sprint 017 (partie 1/N) — Câblage réel de MissionContext (2026-08-02)
+
+- **Découpage validé avec le propriétaire** (Phase 11 « Intégration complète » est énorme — tous
+  les moteurs + 6 nouveaux écrans) : cette passe ne couvre que le câblage technique des 5 moteurs
+  existants (State Machine/GPS/Sync/Offline/Voice) dans `MissionContext`, plus le remplacement des
+  mocks statiques de `MissionScreen` par les vraies données. Pas de nouveaux écrans, pas de
+  capteurs natifs réels (`expo-location`/NetInfo) — même principe « logique d'abord, capteur
+  ensuite » déjà appliqué à chaque moteur précédent.
+- **`App.tsx` remplace enfin `<MissionScreenPreview />` par `<LiveMissionScreen />`** — promesse
+  faite depuis le Sprint 004 (« reswitché vers un `MissionScreen` unique piloté par le vrai State
+  Machine une fois qu'il existera »), redifférée à chaque sprint moteur suivant (009-010, 011-012,
+  013-014, 015, 016). C'est cette passe qui l'honore.
+- **Bug latent corrigé** : `MissionContext` prenait `missions[0]` de `getAll()` (ordre non
+  garanti par le faux `Db`/SQLite) comme mission active — devenu ambigu dès que la vraie Mission
+  #9 Supabase coexiste avec la mission de démo en local. Fix : `selectedMissionId = assigned?.id
+  ?? missions[0]?.id`, les items filtrés par ce `missionId`. N'affecte jamais l'environnement de
+  démo pur (une seule mission, comportement inchangé).
+- **`PROBLEM` est exclu de `ACTIVE_ITEM_STATES`** (`itemTransitions.ts`, décision du Sprint
+  009-010) — donc `MissionContext.activeMissionItem` ne peut **jamais** lui-même être un item
+  PROBLEM. `deriveMissionScreenState.ts` et `LiveMissionScreen.tsx` cherchent explicitement un
+  item `PROBLEM` dans `allMissionItems` en plus de `activeMissionItem` — piège facile à
+  reproduire si un futur code lit seulement `activeMissionItem` en pensant couvrir tous les cas.
+- **Pas de `missionVoiceBridge.ts` séparé** (écart au plan initial, assumé) : sans capteur GPS
+  réel, les transitions automatiques `EN_ROUTE→APPROACHING→IN_PROGRESS→COMPLETED` ne se
+  produisent jamais cette passe — rien à traduire pour elles. Seul `VOICE_PROBLEM_RECORDED` est
+  réellement déclenché (`reportProblem`, sur succès). Un traducteur générique aura de vrais
+  événements à observer une fois `expo-location` câblé — à construire à ce moment-là, pas avant.
+- **`onReportProblem` (bouton « Signaler ») reste sans effet réel** dans `LiveMissionScreen.tsx` —
+  aucune UI n'existe pour choisir un `problemCode`, et aucune taxonomie n'est documentée
+  (`docs/03`/`docs/07`/`docs/09`). Inventer une liste de codes ici aurait été une règle métier non
+  validée. Suivi ouvert, documenté en commentaire de code — pas un oubli.
+- **`MissionProvider` prend `syncTransportOverride`/`speakerOverride`** en plus du
+  `getDbOverride` déjà existant (Sprint 007-008) — nécessaires pour que
+  `tests/missionContext.test.tsx` ne déclenche jamais un vrai appel réseau Supabase ni un module
+  natif de synthèse vocale quand il exerce `reportProblem`/`resolveProblem`/`skipItem` (qui
+  appellent `runSyncCycle()`/`voiceEngine.processNext()` en interne). Même règle « jamais de vrai
+  réseau touché en test » que chaque moteur précédent.
+- **`act()` requis autour de chaque commande mutante dans les tests `renderHook`** :
+  `reportProblem`/`resolveProblem`/`skipItem` déclenchent des `setState` React (via
+  `afterMutation`) après leur `await` — sans les envelopper dans `await act(async () => {…})`,
+  Jest émet un warning « update not wrapped in act(...) » (pas un échec de test, mais un bruit
+  systématique à éviter).
+- **Vérifiée sur device réel** (TECNO KL4) une fois l'appareil branché en cours de tâche : aucun
+  nouveau build natif requis (aucune dépendance native ajoutée cette passe), simple rechargement
+  JS via Metro déjà actif (`adb shell am force-stop` + relance). Aucune nouvelle erreur JS dans
+  les logs Metro (`.expo/dev/logs/start.log`), session Supabase déjà authentifiée persistée.
+  `<LiveMissionScreen />` affiche le repli honnête « Aucune résidence active pour le moment » —
+  **comportement voulu**, pas un bug : la Mission #9 réelle avait déjà tous ses items
+  COMPLETED/SKIPPED depuis le test de câblage Supabase antérieur (2026-08-02), donc plus aucun
+  item actif ni PROBLEM à afficher. `tsc`/`eslint`/`jest` (128/128)/`expo-doctor` (20/20) tous
+  verts. **Suivi ouvert, non bloquant** : revalider avec une mission ayant encore des résidences
+  WAITING/EN_ROUTE (démo ou nouvelle assignation Supabase) pour voir `MissionScreen` réellement
+  peuplé (carte/chronos/boutons) plutôt que seulement le repli.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,

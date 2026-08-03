@@ -32,9 +32,18 @@ import type { MissionScreenState } from './missionScreenState';
 // (Phase 04 Roadmap: "ne pas connecter immédiatement le GPS réel").
 type Props = {
   state: MissionScreenState;
+  // Sprint 017 (partie 1/N) — optional, no-arg (MissionScreenState doesn't
+  // carry a missionItemId — the screen only ever deals with one highlighted
+  // residence at a time, so the caller already knows which one from its own
+  // context and closes over it). Default no-op keeps MissionScreenPreview's
+  // static mocks working unchanged. The real App.tsx entry point wires these
+  // to MissionContext's commands.
+  onReportProblem?: () => void;
+  onResolveProblem?: () => void;
+  onSkipItem?: () => void;
 };
 
-export function MissionScreen({ state }: Props) {
+export function MissionScreen({ state, onReportProblem, onResolveProblem, onSkipItem }: Props) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MissionMapViewHandle>(null);
   const handleRecenter = () => mapRef.current?.recenter();
@@ -139,8 +148,8 @@ export function MissionScreen({ state }: Props) {
               problemType={state.problem.type}
               note={state.problem.note}
               frozenSeconds={state.problem.frozenSeconds}
-              onNext={() => {}}
-              onResumeLater={() => {}}
+              onNext={onSkipItem}
+              onResumeLater={onResolveProblem}
               bare
             />
           ) : (
@@ -148,7 +157,7 @@ export function MissionScreen({ state }: Props) {
               address={state.address}
               distanceLabel={state.residenceDistanceLabel}
               etaLabel={state.residenceEtaLabel}
-              onProblem={() => {}}
+              onProblem={onReportProblem}
               bare
             />
           )}

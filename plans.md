@@ -6,8 +6,111 @@
 
 ## Plan actif
 
-- (aucun — prochain : Sprint 017-019 (Auth, mission assignée, fin de mission, mode développement,
-  Phase 11), à planifier ici avant de coder)
+### 🔄 Sprint 017 (partie 1/N) — Câblage réel de MissionContext (branche
+`sprint-017-mission-context-wiring`, 2026-08-02)
+
+**Objectif** (Phase 11 Roadmap « Intégration complète ») : la Phase 11 est énorme — relie tous
+les moteurs au `MissionContext`/`MissionScreen` réels **et** demande 6 nouveaux écrans (Aucune
+mission, Mission active, Fin de mission, Paramètres, Développement, Mode hors ligne). **Découpage
+validé avec le propriétaire** : cette passe couvre uniquement le câblage technique des 5 moteurs
+existants (State Machine, GPS, Sync, Offline, Voice) dans `MissionContext`, et le remplacement des
+mocks statiques de `MissionScreen` par les vraies données — **pas de nouveaux écrans**, **pas de
+capteurs natifs réels** (GPS/réseau système restent injectés en factice, même principe « logique
+d'abord, capteur ensuite » déjà appliqué à chaque moteur).
+
+**C'est le moment annoncé depuis le Sprint 004** : `MissionScreenPreview` (sélecteur de mocks
+dev-only) devait être « reswitché vers un `MissionScreen` unique piloté par le vrai State Machine »
+dès que celui-ci existerait (Sprint 009-010) — jamais fait, chaque sprint suivant l'a explicitement
+redifféré. C'est cette passe qui honore enfin cette promesse.
+
+**Bug latent corrigé au passage** : `MissionContext` prenait `missions[0]` de `getAll()` (ordre non
+garanti) comme mission active — ambigu depuis que la vraie Mission #9 (Supabase) coexiste avec la
+Mission de démo en base locale (suivi ouvert documenté au câblage Supabase). **Fix** : si
+`fetchAssignedMission` a retourné une mission cette session, son id devient la source de vérité
+(`missionId = assigned?.id ?? missions[0]?.id`), les items sont filtrés par ce `missionId` —
+n'affecte jamais l'environnement de démo (une seule mission dans ce cas, comportement inchangé).
+
+**Design** :
+1. **Moteurs instanciés dans `MissionProvider`** (via `useMemo`/refs stables, pas recréés à
+   chaque rendu) : `createStateMachine(db, clock)`, `createGpsEngine({stateMachine, clock})`,
+   `createSynchronizationEngine({db, clock, transport: createSupabaseSyncTransport(), network})`,
+   `createOfflineEngine({clock, networkStatus})`, `createVoiceEngine({clock, speaker:
+   createExpoSpeaker()})`. `networkStatus`/GPS position restent de simples objets injectés
+   (`{isOnline: () => true}` pour l'instant — **capteur réel explicitement différé**, pas oublié).
+2. **Commandes exposées par le contexte**, câblées aux boutons déjà existants dans l'UI (jamais
+   inventer un nouveau bouton) : `reportProblem`→`CurrentResidenceSheet.onProblem` (« Signaler »),
+   `resolveProblem`→`ProblemStateCard.onResumeLater` (« Reprendre plus tard »),
+   `skipItem`→`ProblemStateCard.onNext` (« Passer à la suivante »). Pas de bouton « Terminer » —
+   la fin de résidence reste automatique via le GPS Engine (capteur réel différé), pas de nouveau
+   flux manuel à inventer.
+3. **Traducteur State Machine → Voice Engine** (`missionVoiceBridge.ts`, pur, testé) : mappe un
+   sous-ensemble reconnu de transitions (`EN_ROUTE`/`APPROACHING`/`IN_PROGRESS`/`COMPLETED`/
+   `PROBLEM`) vers les `VoiceInputEvent` correspondants ; le contexte s'abonne au log du State
+   Machine et pousse dans `voiceEngine.handleEvent` + pompe `processNext()` en boucle légère
+   (`useEffect`, un seul niveau, pas de minuterie dans le moteur lui-même).
+4. **`gpsState`/`synchronizationState`/`offlineState` réels** (plus des placeholders) : mis à jour
+   via `on()` de chaque moteur → `setState` React. Formes ajustées à ce que ces moteurs exposent
+   réellement (pas exactement le TS d'exemple `docs/03`, qui datait d'avant que ces moteurs
+   existent).
+5. **`deriveMissionScreenState(ctx): MissionScreenState | null`** (nouveau, pur, testé) —
+   traduit les champs réels de `MissionContextValue` vers la forme `MissionScreenState` déjà
+   consommée par `MissionScreen` (aucun changement à `MissionScreen` lui-même). Retourne `null`
+   si aucune résidence active (l'écran « Aucune mission » réel reste hors scope — un simple repli
+   minimal est affiché en attendant).
+6. **`App.tsx`** : remplace enfin `<MissionScreenPreview />` par `<MissionScreen>` alimenté par
+   `deriveMissionScreenState`, avec repli minimal si `null`. `MissionScreenPreview` et les 4 mocks
+   restent dans le repo (référence/tests), simplement plus le point d'entrée réel.
+
+**Hors scope, explicitement différé** : capteur GPS réel (`expo-location`) ; capteur réseau réel
+(NetInfo) ; les 6 nouveaux écrans (Mission active/Fin de mission/Paramètres/Développement/Aucune
+mission/Mode hors ligne — sprints suivants de la Phase 11) ; bouton « Fermer la mission » (suivi
+déjà ouvert) ; traduction voix exhaustive (seulement les transitions les plus utiles cette passe).
+
+**Vérification** : tests d'intégration (State Machine réel → `deriveMissionScreenState` reflète
+la transition) ; `tsc`/`eslint`/`jest` verts ; app vérifiée sur device (mission réelle si
+disponible, sinon démo).
+
+**Réalisé conformément au plan, avec deux écarts assumés et documentés (points 3 et « Vérification »
+device) :**
+- Points 1/2/4/5/6 implémentés tels que décrits : `MissionContext.tsx` instancie les 5 moteurs une
+  fois par connexion DB (`useEffect`, refs stables) ; `reportProblem`/`resolveProblem`/`skipItem`
+  câblés à `CurrentResidenceSheet.onProblem`/`ProblemStateCard.onResumeLater`/`ProblemStateCard.onNext`
+  (`MissionScreen.tsx` reçoit 3 callbacks optionnels, no-op par défaut pour ne pas casser
+  `MissionScreenPreview`) ; `gpsState`/`synchronizationState`/`offlineState` réels exposés (formes
+  ajustées à ce que `docs/07`/`docs/08` moteurs exposent réellement) ; `deriveMissionScreenState.ts`
+  (pur, testé, `tests/deriveMissionScreenState.test.ts`) traduit `MissionContextValue` →
+  `MissionScreenState` sans toucher à `MissionScreen` ; `App.tsx` remplace enfin
+  `<MissionScreenPreview />` par `<LiveMissionScreen />` (promesse honorée depuis le Sprint 004).
+- **Écart point 3** : pas de `missionVoiceBridge.ts` séparé. Sans capteur GPS réel (différé,
+  inchangé), les transitions `EN_ROUTE→APPROACHING→IN_PROGRESS→COMPLETED` ne se déclenchent jamais
+  automatiquement cette passe (rien ne les fait avancer) — il n'y avait donc rien à traduire pour
+  elles. Seul `VOICE_PROBLEM_RECORDED` est réellement déclenché (`reportProblem`, sur succès de la
+  transition). Construire un traducteur générique pour des transitions qui ne peuvent pas encore
+  se produire aurait été de la logique morte non testable honnêtement — différé au sprint qui
+  câblera `expo-location` (le bridge aura alors de vrais événements à observer).
+- **Vérification** : `tsc --noEmit`/`eslint .`/`npx jest` tous verts (128/128 tests, dont 8
+  nouveaux `deriveMissionScreenState.test.ts` + 4 nouveaux `missionContext.test.tsx` d'intégration
+  réelle State Machine → contexte → dérivation), `npx expo-doctor` 20/20. **Vérifiée sur device
+  réel** (TECNO KL4, appareil branché en cours de tâche) : aucun nouveau build natif requis (aucune
+  dépendance native ajoutée cette passe — `expo-speech`/gesture-handler/reanimated déjà présents
+  depuis les sprints précédents), simple rechargement JS via Metro déjà actif. Session Supabase
+  déjà authentifiée persistée (`AuthContext hydrate hasSession: true`), aucune erreur JS nouvelle
+  dans les logs Metro, `<LiveMissionScreen />` s'affiche sans écran blanc/crash. La Mission #9
+  réelle (déjà entièrement complétée lors du test de câblage Supabase du 2026-08-02) ne fournit
+  plus d'item actif ni PROBLEM — l'écran affiche donc correctement le repli honnête « Aucune
+  résidence active pour le moment » plutôt qu'un état inventé, exactement le comportement voulu
+  par `deriveMissionScreenState`/`LiveMissionScreen`. Suivi ouvert (pas bloquant) : revalider avec
+  une mission ayant encore des résidences WAITING/EN_ROUTE pour voir `MissionScreen` alimenté par
+  de vraies données (carte/chronos/`reportProblem`/`resolveProblem`/`skipItem` en conditions
+  réelles), par ex. via la mission de démo ou une nouvelle mission Supabase assignée.
+- `MissionProvider` reçoit aussi `syncTransportOverride`/`speakerOverride` (en plus de
+  `getDbOverride` déjà existant) — nécessaire pour que `tests/missionContext.test.tsx` ne touche
+  jamais le vrai réseau Supabase ni un module natif de synthèse vocale (même règle que chaque
+  moteur précédent, `memory.md`).
+- `onReportProblem` (bouton « Signaler ») reste volontairement sans effet réel dans
+  `LiveMissionScreen.tsx` : aucune UI n'existe pour choisir un `problemCode`, et aucune taxonomie
+  n'est documentée (`docs/03`/`docs/07`/`docs/09`) — l'inventer aurait été une règle métier non
+  validée. Documenté en commentaire dans le code, suivi ouvert pour un sprint futur.
 
 ## Archivé
 
