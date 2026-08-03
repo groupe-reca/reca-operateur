@@ -438,8 +438,9 @@
     (20/20). **Non vérifiable sur device depuis ce VPS** : 2 nouveaux modules natifs, nécessite le
     cycle `expo prebuild`/Android Studio du propriétaire — suivi ouvert, même pattern que chaque
     sprint ayant ajouté une dépendance native (Voice/gesture-handler/async-storage).
-- [x] **Écran « Mission active »** (branche `sprint-mission-active-screen`, 2026-08-03,
-  `docs/11-Roadmap.md` Écran « Mission active »). Choisi comme prochain sprint avec le propriétaire
+- [x] **Écran « Mission active »** (branche `sprint-mission-active-screen`, 2026-08-03, PR :
+  https://github.com/groupe-reca/reca-operateur/pull/5, `docs/11-Roadmap.md` Écran « Mission
+  active »). Choisi comme prochain sprint avec le propriétaire
   (alternatives écartées : Paramètres — cosmétique ; Mode hors ligne dédié — l'overlay
   `OfflineIndicator` couvre déjà l'essentiel). **Résout le gap documenté au Sprint 018** : la
   mission de démo restait `READY` indéfiniment faute d'un bouton « démarrer » — cet écran en
