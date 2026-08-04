@@ -698,14 +698,22 @@
   téléchargement (lecture) ; la synchronisation retour (écriture — transitions locales vers
   `reca-app`) n'a **pas** été testée bout-en-bout sur device (nécessite de faire progresser la
   Mission via `MissionScreen`, qui ne lit pas encore `MissionContext` — voir suivi ci-dessous).
-- [ ] **Suivi ouvert — deux Missions coexistent en local (Mission démo + Mission #9 réelle)** :
-  `seedDemoMissionIfEmpty` ne s'est pas déclenché (base déjà non-vide depuis une session
-  précédente), donc la Mission de démo (`Route 12A`/« Opérateur Démo ») reste dans la base à
-  côté de la vraie Mission #9. `MissionContext` prend `missions[0]` de `missionRepo.getAll()`
-  (ordre non garanti, probablement insertion) — ambigu tant qu'un vrai mécanisme de sélection
-  n'existe pas. Pas un bug de cette passe (portée = câblage transport, pas gestion du cycle de
-  vie multi-mission), mais à traiter avant que `MissionScreen` consomme réellement
-  `MissionContext`.
+- [x] **Corrigé — Sélection de mission active déterministe** (branche `sprint-mission-selection`,
+  2026-08-04, PR : https://github.com/groupe-reca/reca-operateur/pull/9). La Mission démo (Mission
+  démo/Route 12A) et une vraie Mission Supabase peuvent coexister en local (démo seedée avant que
+  le vrai compte/mission existe) ; `missions[0]` (ordre SQLite non garanti) restait le repli dès que
+  `fetchAssignedMission` ne renvoyait rien (pas d'`employeeId`, ou échec réseau transitoire).
+  Nouvelle fonction pure `selectMissionId({assignedId, missions, sessions})`
+  (`MissionContext.tsx`) : `assignedId` prioritaire (cas nominal inchangé) ; sinon la mission de la
+  **session opérateur la plus récente** encore existante (préserve ce que l'opérateur regardait
+  réellement) ; sinon `missions[0]` en dernier recours. `load()`/`refreshAssignment()` partagent
+  désormais cette seule règle. Aucune suppression/nettoyage automatique de la démo (pas de décision
+  produit validée pour ça — même refus que pour la résidence « 148 Rue Scott »). Vérifié :
+  `tsc`/`eslint`/`jest` verts (191/191, 20 suites, dont 6 nouveaux tests : 5 tests purs
+  `selectMissionId` + 1 test d'intégration reproduisant exactement le scénario trouvé sur
+  l'appareil — démo insérée en premier, vraie mission ensuite, sélection retombe correctement sur
+  la vraie mission via la dernière session). **Non vérifié sur device** : aucune dépendance native
+  ajoutée, pas testé physiquement cette passe.
 
 ## Suivi / limitations déclarées
 

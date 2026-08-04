@@ -290,10 +290,15 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     intrinsèquement basée sur des composants).
 - `src/context/`
   - `MissionContext.tsx` (Sprint 007-008, réécrit Sprint 017 partie 1/N — 2026-08-02 ; étendu
-    Sprints 018/019/017-partie-2/Mission-active) — `MissionProvider`/`useMissionContext()` : au
-    montage, instancie les 5 moteurs réels (State Machine/GPS/Sync/Offline/Voice, refs stables)
-    puis charge (migrations → **`fetchAssignedMission` si `employeeId` fourni, sinon/en repli seed
-    démo si vide** → mission sélectionnée sans ambiguïté via `assigned?.id ?? missions[0]?.id` →
+    Sprints 018/019/017-partie-2/Mission-active/Détection-GPS/dev-gps-vs-capteur-réel/
+    Sélection-de-mission) — `MissionProvider`/`useMissionContext()` : au montage, instancie les 5
+    moteurs réels (State Machine/GPS/Sync/Offline/Voice, refs stables) puis charge (migrations →
+    **`fetchAssignedMission` si `employeeId` fourni, sinon/en repli seed démo si vide** → mission
+    sélectionnée via **`selectMissionId({assignedId, missions, sessions})`** (nouvelle fonction
+    pure, exportée, Sprint « Sélection de mission active déterministe » 2026-08-04 : `assignedId` >
+    mission de la session opérateur la plus récente encore existante > `missions[0]` > `null` —
+    remplace le simple `assigned?.id ?? missions[0]?.id` du Sprint 017 partie 1/N, qui retombait
+    sur un ordre SQLite non garanti dès que `assigned` était `null`, voir `memory.md`) →
     alertes de la mission chargées (Sprint « Mission active », `missionAlertRepository.getAll()`
     filtré aux items sélectionnés) → session ouverte → démarre le capteur GPS réel si une mission
     existe (Sprint 017 partie 2/N) →
