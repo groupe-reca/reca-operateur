@@ -33,6 +33,8 @@ function makeDev(overrides: Partial<DevTools> = {}): DevTools {
     getTransitions: jest.fn().mockResolvedValue([]),
     setNetworkOverride: jest.fn().mockResolvedValue(undefined),
     exportLogs: jest.fn().mockResolvedValue('{}'),
+    realGpsPaused: false,
+    setRealGpsPaused: jest.fn(),
     ...overrides,
   };
 }
@@ -120,5 +122,35 @@ describe('DevScreen', () => {
       fireEvent.press(getByText('Aller à la cible'));
     });
     expect(ctx.dev.gps.moveTo).toHaveBeenCalledWith({ latitude: 45.78, longitude: -73.95 });
+  });
+
+  it('pauses the real GPS sensor on mount and resumes it on unmount', () => {
+    const ctx = makeCtx();
+    const { unmount } = renderDevScreen(ctx, jest.fn());
+
+    expect(ctx.dev.setRealGpsPaused).toHaveBeenCalledWith(true);
+    expect(ctx.dev.setRealGpsPaused).toHaveBeenCalledTimes(1);
+
+    unmount();
+    expect(ctx.dev.setRealGpsPaused).toHaveBeenCalledWith(false);
+    expect(ctx.dev.setRealGpsPaused).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows "Reprendre le capteur réel" and lets it resume the sensor early, while paused', () => {
+    const setRealGpsPaused = jest.fn();
+    const ctx = makeCtx({ dev: makeDev({ realGpsPaused: true, setRealGpsPaused }) });
+    const { getByText } = renderDevScreen(ctx, jest.fn());
+
+    expect(getByText('Capteur réel en pause (simulation active).')).toBeTruthy();
+    fireEvent.press(getByText('Reprendre le capteur réel'));
+    expect(setRealGpsPaused).toHaveBeenCalledWith(false);
+  });
+
+  it('does not show "Reprendre le capteur réel" while the real sensor is already active', () => {
+    const ctx = makeCtx({ dev: makeDev({ realGpsPaused: false }) });
+    const { getByText, queryByText } = renderDevScreen(ctx, jest.fn());
+
+    expect(getByText('Capteur réel actif.')).toBeTruthy();
+    expect(queryByText('Reprendre le capteur réel')).toBeNull();
   });
 });

@@ -109,15 +109,21 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     Supabase/State Machine direct. Résumé + résidences à reprendre + `SyncIndicator`/opérations en
     attente + bouton « Fermer la mission » (confirmation locale : devient « Mission fermée » après
     succès, pas un blocage réseau).
-  - `DevScreen.tsx` (Sprint 019, testé `tests/devScreen.test.tsx`) — écran « Développement »
+  - `DevScreen.tsx` (Sprint 019, étendu Sprint « Suspension du capteur GPS réel pendant la
+    simulation » 2026-08-04, testé `tests/devScreen.test.tsx`) — écran « Développement »
     (`docs/11` Écrans finaux), gardé par `__DEV__` côté appelant (`LiveMissionScreen.tsx`), pas de
-    logique d'accès ici. Props `ctx: MissionContextValue`/`onClose`. Sections États (`dev.getStates()`)
-    /Simuler GPS (`dev.gps` — cible = `activeMissionItem`/premier `nextMissionItems`, boutons
-    Aller à la cible/+5s/+30s/Perdre-Retrouver le signal ; « tester les transitions » se fait via
-    ce simulateur, pas des boutons State Machine bruts)/Simuler réseau (`dev.setNetworkOverride`)/
-    Seuils (`dev.thresholds`)/File (`dev.getSyncQueue()`)/Événements (`dev.getEvents()`)/Historique
-    des transitions (`dev.getTransitions()`) + bouton Exporter (`dev.exportLogs()` →
-    `Share.share()`, API core React Native).
+    logique d'accès ici. Props `ctx: MissionContextValue`/`onClose`. **`useEffect` monté/démonté** :
+    `ctx.dev.setRealGpsPaused(true)` à l'ouverture, `(false)` à la fermeture — le capteur GPS réel
+    et `dev.gps` (simulateur) tournaient sur la même instance de GPS Engine (compétition trouvée en
+    test autonome le 2026-08-03, voir `memory.md`), fermer cet écran suffit désormais toujours à
+    reprendre le capteur réel. Sections États (`dev.getStates()`)/Simuler GPS (texte d'état +
+    bouton « Reprendre le capteur réel » si `dev.realGpsPaused`, puis `dev.gps` — cible =
+    `activeMissionItem`/premier `nextMissionItems`, boutons Aller à la cible/+5s/+30s/
+    Perdre-Retrouver le signal ; « tester les transitions » se fait via ce simulateur, pas des
+    boutons State Machine bruts)/Simuler réseau (`dev.setNetworkOverride`)/Seuils
+    (`dev.thresholds`)/File (`dev.getSyncQueue()`)/Événements (`dev.getEvents()`)/Historique des
+    transitions (`dev.getTransitions()`) + bouton Exporter (`dev.exportLogs()` → `Share.share()`,
+    API core React Native).
   - `NoMissionScreen.tsx` (Sprint 017 partie 2/N, testé `tests/noMissionScreen.test.tsx`) — écran
     « Aucune mission » (`docs/11` Écrans finaux) : logo officiel, utilisateur (`useAuth()` lu
     directement — `AuthProvider` enveloppe déjà tout l'arbre, aucun threading de prop nécessaire),
@@ -319,7 +325,13 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     changement utilisateur ; `getStates`/`getEvents` agrègent ce que les 4 moteurs exposent déjà ;
     `getSyncQueue`/`getTransitions` lisent les repositories directement ; `setNetworkOverride`
     pilote `networkOverrideRef`, garde priorité sur le signal réseau réel ; `exportLogs` assemble
-    tout en JSON pour `Share.share()`, `thresholds` y reflète aussi `detectionRadii`).
+    tout en JSON pour `Share.share()`, `thresholds` y reflète aussi `detectionRadii` ;
+    **`realGpsPaused`/`setRealGpsPaused`** (Sprint « Suspension du capteur GPS réel pendant la
+    simulation », 2026-08-04) — `realGpsPausedRef` lu en tout premier dans le callback `onFix` du
+    capteur réel (avant `gpsEngine.updatePosition()`/`setGpsState()`) : un fix reçu pendant la
+    pause est ignoré silencieusement, le capteur natif continue de tourner, seul son effet sur le
+    moteur/l'affichage est court-circuité. Consommé par `DevScreen.tsx` — pause au montage, reprise
+    au démontage.
     `closeMission` : `requestMissionComplete`, puis — contrairement aux autres commandes — recharge
     aussi `mission` via `missionRepo.getById`, pas seulement les items, sinon l'écran ne verrait
     jamais son propre succès ; retourne le `TransitionResult` brut. **Réseau** (Sprint 017 partie

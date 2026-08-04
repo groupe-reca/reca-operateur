@@ -534,16 +534,23 @@
   hamburger→`SettingsScreen` (Compte/Voix/Thème/Version, toggle voix, « Mode développement »),
   `DevScreen` (États réels, Seuils GPS), `dev.setNetworkOverride` → `RECOVERING` observé en direct
   (jamais `ONLINE` immédiat). Aucun crash sur toute la session.
-  - [ ] **Suivi ouvert — décision produit requise** : `dev.gps` (simulateur) et le capteur GPS réel
-    tournent simultanément sur le même GPS Engine dès qu'une mission est chargée, rien ne les rend
-    mutuellement exclusifs. Trouvé en testant : la résidence active est à ~295 m de la position
-    réelle de l'appareil (juste au-dessus du rayon d'approche 250 m) — le vrai fix arrivant toutes
-    les ~5 s invaliderait probablement la candidature de validation que le simulateur vient
-    d'établir, empêchant `dev.gps.moveTo`+`advanceTime` de confirmer une transition en direct
-    (fonctionne pourtant de façon fiable dans `tests/missionContext.test.tsx`, où le faux
-    `LocationProvider` n'accorde jamais la permission). Nécessite une vraie décision produit
-    (suspendre le capteur réel pendant la simulation ? interrupteur explicite dans `DevScreen` ?)
-    — non corrigé, voir détail dans `memory.md`.
+  - [x] **Corrigé — décision produit prise avec le propriétaire** (branche
+    `sprint-dev-gps-vs-real-sensor`, 2026-08-04, PR :
+    https://github.com/groupe-reca/reca-operateur/pull/8) : `dev.gps` (simulateur) et le capteur GPS réel
+    tournaient simultanément sur le même GPS Engine dès qu'une mission était chargée, rien ne les
+    rendait mutuellement exclusifs (résidence active mission #9 à ~295 m de la position réelle,
+    juste au-dessus du rayon d'approche 250 m — le vrai fix invalidait la candidature de
+    validation du simulateur avant confirmation). **Choix retenu** (parmi les deux proposés) :
+    suspension automatique du capteur réel pendant la simulation, plutôt qu'un interrupteur
+    explicite « source de position ». `MissionContext.dev.realGpsPaused`/`setRealGpsPaused`
+    (nouveau) : un fix réel reçu pendant la pause n'atteint ni `gpsEngine.updatePosition()` ni
+    `gpsState` — ignoré silencieusement, le capteur natif continue de tourner en arrière-plan
+    (aucun coût de permission/redémarrage). `DevScreen` : pause automatique au montage, reprise
+    automatique au démontage (fermeture de l'écran toujours suffisante), bouton « Reprendre le
+    capteur réel » pour une reprise manuelle anticipée. Vérifié : `tsc`/`eslint`/`jest` verts
+    (185/185, 20 suites, dont 2 nouveaux tests `devScreen.test.tsx` + 1 nouveau test d'intégration
+    `missionContext.test.tsx`). **Non vérifié sur device** : aucune dépendance native ajoutée, pas
+    testé physiquement cette passe.
 - [x] **Réglages du rayon de détection GPS** (branche `sprint-detection-radii-settings`,
   2026-08-04, PR : https://github.com/groupe-reca/reca-operateur/pull/7). Demande explicite du propriétaire : rendre le rayon « en approche » et le rayon
   « en cours » réglables depuis Paramètres (jusqu'ici figés dans `DEFAULT_GPS_THRESHOLDS`).
