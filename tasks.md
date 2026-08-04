@@ -467,6 +467,22 @@
   commande de contexte, désormais réelle)/`expo-doctor` (20/20). **Non vérifié sur device** :
   aucune dépendance native ajoutée, mais pas testé physiquement sur l'appareil cette passe — suivi
   ouvert, même pattern que chaque sprint précédent.
+- [x] **Premier test réel de bout en bout sur device** (TECNO KL4, 2026-08-03, après merge des
+  PR #4/#5) — build/install exécutés **depuis ce VPS** (adb/JDK 17/Android SDK confirmés présents
+  et un appareil connecté, contrairement à l'hypothèse par défaut de `CLAUDE.md` — voir
+  `memory.md`). **2 bugs réels trouvés** :
+  - [ ] **Suivi ouvert, non résolu** — migration SQLite manquante : `sync_operations` (`CREATE
+    TABLE IF NOT EXISTS`) n'ajoute jamais les colonnes du Sprint 013-014 sur un appareil ayant déjà
+    une base locale antérieure (`table sync_operations has no column named mission_id`).
+    Contourné pour ce test (`adb shell pm clear`), pas corrigé — un vrai mécanisme de migration
+    versionnée reste à construire avant un pilote multi-appareils.
+  - [x] **Corrigé** — `recoverOnStartup` (State Machine, Sprint 009-010) n'était jamais appelé
+    dans `MissionContext.tsx` (invisible car la mission de démo pré-active toujours son premier
+    item) : après « Démarrer la tournée » sur une vraie mission (tous les items `WAITING`),
+    l'écran restait bloqué sur le repli générique. Câblé au montage + dans `startMission()`.
+    Vérifié en direct sur l'appareil (carte Mapbox + résidence EN ROUTE affichées immédiatement
+    après démarrage) + nouveau test de régression `tests/missionContext.test.tsx`. `tsc`/`eslint`/
+    `jest` verts (158/158, 18 suites).
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 
 ## À vérifier

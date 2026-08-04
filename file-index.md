@@ -273,7 +273,10 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     `synchronizationState`/`offlineState` (réels depuis leurs sprints respectifs) + les commandes
     `reportProblem`/`resolveProblem`/`skipItem`/**`closeMission`** (Sprint 018 : voir plus bas) +
     **`startMission`** (Sprint « Mission active » — `requestMissionStart`, même patron que
-    `closeMission`, recharge `mission` sur succès) + **`refreshAssignment`** (Sprint 017 partie 2/N
+    `closeMission`, recharge `mission` sur succès **et appelle
+    `recoverOnStartup` du State Machine** — bug réel trouvé/corrigé sur device le 2026-08-03, voir
+    `memory.md` : sans ça, une vraie mission dont tous les items sont encore `WAITING` n'avait
+    aucun écran à afficher après démarrage) + **`refreshAssignment`** (Sprint 017 partie 2/N
     — relance `fetchAssignedMission` sans redémarrer capteurs/session, appelée par
     `NoMissionScreen`) + **`dev`** (Sprint 019, `DevTools` — `gps`
     enveloppe `createGpsSimulator` autour de `gpsEngineRef` avec rechargement `afterMutation`

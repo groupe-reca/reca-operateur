@@ -1188,6 +1188,53 @@
   actuellement, donc rien ne changerait entre deux lectures dans une même session ; à revisiter si
   un futur producteur d'alertes apparaît.
 
+## Premier test réel de bout en bout sur device (2026-08-03) — 2 vrais bugs trouvés
+
+Premier test complet capteurs réels + Mission active sur le TECNO KL4 du propriétaire, après merge
+des PR #4/#5. Build `expo prebuild` + `gradlew installDebug` (nouveaux modules
+`expo-location`/`@react-native-community/netinfo`) exécuté **depuis ce VPS** — confirmation que
+cette machine dispose bien d'`adb`/JDK 17/Android SDK (`C:\Users\Francis\AppData\Local\Android\Sdk`)
+et d'un appareil connecté en USB, contrairement à l'hypothèse par défaut « VPS sans GUI/émulateur »
+de `CLAUDE.md` — **cette hypothèse ne tient plus sur cette machine**, à garder en tête pour les
+prochains sprints (build+test device possibles directement d'ici, pas seulement depuis le laptop du
+propriétaire). Piège de build confirmé (déjà noté ailleurs) : `gradlew installDebug` dépasse
+souvent le timeout de 10 min de l'outil Bash et se fait « tuer », mais le daemon Gradle continue
+réellement en arrière-plan (`./gradlew --status` → `BUSY`) — vérifier `app/build/outputs/apk` et
+`adb shell dumpsys package … lastUpdateTime` avant de conclure à un échec.
+
+**Bug 1 — migration SQLite manquante** : `sync_operations` (`src/persistence/migrations.ts`) utilise
+`CREATE TABLE IF NOT EXISTS` — sur un appareil ayant déjà une base locale antérieure au
+Sprint 013-014 (colonnes `mission_id`/`mission_item_id`/etc. ajoutées cette passe-là), ces colonnes
+ne sont **jamais** ajoutées rétroactivement. Erreur observée : `NativeDatabase.prepareAsync` rejeté,
+`table sync_operations has no column named mission_id`. **Contourné** pour ce test via `adb shell pm
+clear` (équivalent réinstall propre) — **pas un vrai correctif**, `docs/10` documentait déjà
+l'hypothèse « schéma sans utilisateur réel, pas besoin d'`ALTER TABLE` » comme un choix conscient
+(Sprint 013-014) ; elle ne tient plus maintenant qu'un appareil réel a un historique. **Suivi ouvert
+non résolu** : un vrai mécanisme de migration versionnée reste à construire avant un déploiement
+pilote à plusieurs appareils déjà en champ.
+
+**Bug 2 — `recoverOnStartup` (State Machine) jamais câblé, corrigé** : `src/engines/state-machine/
+recovery.ts` (Sprint 009-010, docs/09 « Récupération après redémarrage ») active automatiquement le
+premier `MissionItem` `WAITING` quand une Mission `IN_PROGRESS` n'a **aucun** item actif — construit
+et testé isolément depuis le Sprint 009-010, mais **`MissionContext.tsx` ne l'a jamais appelé**
+(seul le `recoverOnStartup` homonyme du Sync Engine, sans rapport, l'était). Resté invisible parce
+que la mission de démo (`seedDemoMissionIfEmpty`) pré-active toujours son premier item en `EN_ROUTE`
+— une vraie mission Supabase, elle, a tous ses items `WAITING` jusqu'à ce que quelque chose les
+active. Symptôme observé : après « Démarrer la tournée » (`startMission()`, Mission `READY` →
+`IN_PROGRESS`), écran bloqué sur le repli générique « Aucune résidence active » — ni `EndOfMissionScreen`
+(des items encore `WAITING` bloquent l'éligibilité), ni `MissionActiveScreen` (mission plus `READY`),
+ni `MissionScreen` (aucun item actif à afficher). **Corrigé** : `recoverStateMachineOnStartup` importé
+(alias, collision de nom avec la méthode du Sync Engine) et appelé à 2 endroits — au montage juste
+après la sélection de `selectedMissionId` (le cas « redémarrage app pendant que la mission est déjà
+`IN_PROGRESS` », l'intention documentée d'origine) et dans `startMission()` après le succès de la
+transition (le cas « viens de démarrer cette session, personne n'a encore rien activé » — sinon il
+aurait fallu redémarrer l'app pour voir apparaître la première résidence). Vérifié en direct sur
+l'appareil : après le correctif, « Démarrer la tournée » affiche immédiatement la vraie carte Mapbox
+avec la résidence 148 Rue Scott en EN ROUTE. Nouveau test de régression :
+`tests/missionContext.test.tsx` (« startMission activates the first WAITING item… ») reproduit la
+condition en réinitialisant artificiellement l'item pré-activé du seed à `WAITING` avant d'appeler
+`startMission()`.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,

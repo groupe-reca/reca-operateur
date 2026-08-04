@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { GpsPosition } from '@/engines/gps';
 import type { Speaker } from '@/engines/voice';
 import type { SyncOperationOutcome, SyncTransport } from '@/engines/sync/types';
-import type { SyncOperation } from '@/domain/entities';
+import type { MissionItem, SyncOperation } from '@/domain/entities';
 import { MissionProvider, useMissionContext } from '@/context/MissionContext';
 import type { LocationProvider } from '@/integrations/location/expoLocationProvider';
 import type { NetworkSensor } from '@/integrations/network/expoNetInfoProvider';
@@ -402,6 +402,29 @@ describe('MissionContext — real engines wired over a fake DB', () => {
 
     expect(outcome?.success).toBe(true);
     await waitFor(() => expect(result.current.mission?.status).toBe('IN_PROGRESS'));
+  });
+
+  it('startMission activates the first WAITING item when nothing was ever set active (real-device bug, 2026-08-03)', async () => {
+    // The demo seed pre-activates its first item as EN_ROUTE, which always
+    // masked this bug — a real Supabase-assigned mission's items are all
+    // WAITING until something activates one. Reproduce that here by
+    // resetting the seeded EN_ROUTE item back to WAITING directly in the
+    // fake db before starting the mission.
+    const { result, db } = renderMissionContext();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const itemRepo = createMissionItemRepository(db);
+    const enRouteItem = result.current.allMissionItems.find((item) => item.status === 'EN_ROUTE');
+    expect(enRouteItem).toBeTruthy();
+    await itemRepo.upsert({ ...(enRouteItem as MissionItem), status: 'WAITING', enRouteAt: null });
+
+    await act(async () => {
+      await result.current.startMission();
+    });
+
+    await waitFor(() => expect(result.current.mission?.status).toBe('IN_PROGRESS'));
+    await waitFor(() => expect(result.current.activeMissionItem?.id).toBe(enRouteItem?.id));
+    expect(result.current.activeMissionItem?.status).toBe('EN_ROUTE');
   });
 
   it('startMission refuses once the mission is already IN_PROGRESS (no duplicate transition)', async () => {

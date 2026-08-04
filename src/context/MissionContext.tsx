@@ -15,7 +15,13 @@ import {
   type GpsThresholds,
 } from '@/engines/gps';
 import { createOfflineEngine, type OfflineEngine, type OfflineEngineEvent, type OfflineEngineState } from '@/engines/offline';
-import { createStateMachine, isActiveItemState, type StateMachine, type TransitionResult } from '@/engines/state-machine';
+import {
+  createStateMachine,
+  isActiveItemState,
+  recoverOnStartup as recoverStateMachineOnStartup,
+  type StateMachine,
+  type TransitionResult,
+} from '@/engines/state-machine';
 import { createSynchronizationEngine, type SynchronizationEngine } from '@/engines/sync';
 import type { NetworkStatusProvider, SyncEngineEvent, SynchronizationState } from '@/engines/sync/types';
 import { createVoiceEngine, type VoiceEngine } from '@/engines/voice';
@@ -289,11 +295,28 @@ export function MissionProvider({
       // exactly one mission) is unaffected.
       const selectedMissionId = assigned?.id ?? missions[0]?.id ?? null;
       const selectedMission = missions.find((m) => m.id === selectedMissionId) ?? null;
-      const selectedItems = selectedMissionId ? missionItems.filter((item) => item.missionId === selectedMissionId) : [];
+      let selectedItems = selectedMissionId ? missionItems.filter((item) => item.missionId === selectedMissionId) : [];
       const selectedItemIds = new Set(selectedItems.map((item) => item.id));
       const alertRepo = createMissionAlertRepository(db);
       const allAlerts = await alertRepo.getAll();
       const selectedAlerts = allAlerts.filter((alert) => selectedItemIds.has(alert.missionItemId));
+
+      // Bug found testing on a real device (2026-08-03): the State
+      // Machine's own `recoverOnStartup` (docs/09 "Récupération après
+      // redémarrage", Sprint 009-010 — activates the first WAITING item
+      // when an IN_PROGRESS mission has zero active items) was built but
+      // never actually called from this context. Went unnoticed because
+      // the demo seed always pre-activates its first item as EN_ROUTE — a
+      // real Supabase mission whose items are still all WAITING when
+      // `startMission()` moves it to IN_PROGRESS had no screen to show
+      // (not eligible for Fin de mission, not READY anymore, no active
+      // item for the live screen). Not just startup recovery: it also
+      // covers "just started, nothing activated yet" since the precondition
+      // (IN_PROGRESS + zero active items) is the same either way.
+      if (selectedMissionId) {
+        await recoverStateMachineOnStartup(db, systemClock, stateMachine, selectedMissionId);
+        selectedItems = (await itemRepo.getAll()).filter((item) => item.missionId === selectedMissionId);
+      }
 
       const now = systemClock.now().toISOString();
       const newSession: OperatorSession = {
@@ -488,6 +511,16 @@ export function MissionProvider({
     const result = await stateMachine.requestMissionStart(mission.id);
     if (result.success) {
       await reloadMission(mission.id);
+      // The mount-time recovery call (see `load()`) ran while the mission
+      // was still READY (a no-op, its precondition is IN_PROGRESS) — now
+      // that it just became IN_PROGRESS, run it again to activate the
+      // first WAITING item immediately rather than leaving the operator on
+      // a blank screen until the next app restart.
+      const db = dbRef.current;
+      if (db) {
+        await recoverStateMachineOnStartup(db, systemClock, stateMachine, mission.id);
+      }
+      await afterMutation(mission.id);
     }
     return result;
   }
