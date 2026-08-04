@@ -503,8 +503,9 @@
     scope). Vérifié en direct (« À 294 m » affiché).
   Vérifié : `tsc`/`eslint`/`jest` verts (162/162, 18 suites).
 - [x] **Migration SQLite versionnée + écran « Paramètres »** (branche
-  `sprint-migrations-parametres`, 2026-08-03) — deux tâches choisies avec le propriétaire pour
-  avancer : le bug de migration SQLite trouvé au test device (suivi ouvert) et l'écran
+  `sprint-migrations-parametres`, 2026-08-03, PR :
+  https://github.com/groupe-reca/reca-operateur/pull/6) — deux tâches choisies avec le propriétaire
+  pour avancer : le bug de migration SQLite trouvé au test device (suivi ouvert) et l'écran
   « Paramètres » (`docs/11` Écrans finaux).
   - [x] **Migration** : `src/persistence/migrations.ts` — `SCHEMA_VERSION` → 2,
     `columnExists`/`addColumnIfMissing` (lisent `PRAGMA table_info`, `ALTER TABLE ADD COLUMN`
