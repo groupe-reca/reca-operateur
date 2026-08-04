@@ -545,7 +545,7 @@
     (suspendre le capteur réel pendant la simulation ? interrupteur explicite dans `DevScreen` ?)
     — non corrigé, voir détail dans `memory.md`.
 - [x] **Réglages du rayon de détection GPS** (branche `sprint-detection-radii-settings`,
-  2026-08-04). Demande explicite du propriétaire : rendre le rayon « en approche » et le rayon
+  2026-08-04, PR : https://github.com/groupe-reca/reca-operateur/pull/7). Demande explicite du propriétaire : rendre le rayon « en approche » et le rayon
   « en cours » réglables depuis Paramètres (jusqu'ici figés dans `DEFAULT_GPS_THRESHOLDS`).
   Clarifié au passage : aucune règle de vitesse minimum au départ n'existe (ni code, ni `docs/04`)
   — confirmé au propriétaire, laissé hors scope plutôt qu'inventé. **GPS Engine**
