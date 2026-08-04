@@ -3,9 +3,9 @@ import type { Db } from './types';
 // The 7 "entités prioritaires" of docs/11-Roadmap.md Phase 05, with columns
 // taken from docs/03-Data-Architecture.md (Mission/MissionItem) and
 // docs/09-State-Machine.md (StateTransition). `CREATE TABLE IF NOT EXISTS`
-// is itself idempotent; a single version marker is enough for now — an
-// ALTER-based upgrade path is a future concern once the schema actually
-// needs to change across app versions in the field.
+// is itself idempotent, but only for tables that don't exist yet — it does
+// nothing to a table that already exists with an older column set (see
+// `migrateTo2` below, added after finding exactly this on a real device).
 const STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER NOT NULL
@@ -59,10 +59,11 @@ const STATEMENTS: string[] = [
     longitude REAL,
     reason TEXT
   )`,
-  // Sprint 013-014 — full docs/07 "Structure d'une opération" shape. No
-  // ALTER-based upgrade path: this table has no real users yet (see
-  // memory.md), so redefining CREATE TABLE is enough — an ALTER path is a
-  // future concern once the schema needs to change under real field data.
+  // Sprint 013-014 — full docs/07 "Structure d'une opération" shape.
+  // `CREATE TABLE IF NOT EXISTS` only builds this full shape on a device
+  // that never had `sync_operations` before — an existing installation
+  // from before this sprint keeps its older, narrower table forever unless
+  // `migrateTo2` (below) adds the missing columns explicitly.
   `CREATE TABLE IF NOT EXISTS sync_operations (
     id TEXT PRIMARY KEY,
     entity_type TEXT NOT NULL,
@@ -109,14 +110,62 @@ const STATEMENTS: string[] = [
   )`,
 ];
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+
+async function columnExists(db: Db, table: string, column: string): Promise<boolean> {
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`, []);
+  return columns.some((c) => c.name === column);
+}
+
+async function addColumnIfMissing(db: Db, table: string, column: string, definition: string): Promise<void> {
+  if (!(await columnExists(db, table, column))) {
+    await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+// Bug found testing on a real device (2026-08-03): a local DB created before
+// Sprint 013-014 kept the narrower Sprint 007-008 `sync_operations` shape
+// forever — `CREATE TABLE IF NOT EXISTS` is a no-op once the table already
+// exists, so these 9 columns never arrived, and every write crashed
+// (`NativeDatabase.prepareAsync` rejected: "no column named mission_id").
+// `addColumnIfMissing` makes this safe to run on every launch regardless of
+// version (a fresh install already has every column via `CREATE TABLE`
+// above, so each check is just a no-op there).
+async function migrateTo2(db: Db): Promise<void> {
+  await addColumnIfMissing(db, 'sync_operations', 'mission_id', 'TEXT');
+  await addColumnIfMissing(db, 'sync_operations', 'mission_item_id', 'TEXT');
+  await addColumnIfMissing(db, 'sync_operations', 'local_sequence', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing(db, 'sync_operations', 'attempt_count', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing(db, 'sync_operations', 'idempotency_key', 'TEXT NOT NULL DEFAULT ""');
+  await addColumnIfMissing(db, 'sync_operations', 'last_attempt_at', 'TEXT');
+  await addColumnIfMissing(db, 'sync_operations', 'next_attempt_at', 'TEXT');
+  await addColumnIfMissing(db, 'sync_operations', 'last_error_code', 'TEXT');
+  await addColumnIfMissing(db, 'sync_operations', 'last_error_message', 'TEXT');
+}
+
+// Ordered by target version — each entry runs once, only for a device whose
+// stored `schema_version` is below it. Add the next entry here (never
+// rewrite an old one) the next time the schema needs to change under real
+// field data.
+const MIGRATIONS: { version: number; run: (db: Db) => Promise<void> }[] = [{ version: 2, run: migrateTo2 }];
 
 export async function runMigrations(db: Db): Promise<void> {
   for (const statement of STATEMENTS) {
     await db.execAsync(statement);
   }
+
   const existing = await db.getFirstAsync<{ version: number }>('SELECT version FROM schema_version LIMIT 1', []);
+  const currentVersion = existing?.version ?? 0;
+
+  for (const migration of MIGRATIONS) {
+    if (currentVersion < migration.version) {
+      await migration.run(db);
+    }
+  }
+
   if (!existing) {
     await db.runAsync('INSERT INTO schema_version (version) VALUES (?)', [SCHEMA_VERSION]);
+  } else if (existing.version !== SCHEMA_VERSION) {
+    await db.runAsync('UPDATE schema_version SET version = ?', [SCHEMA_VERSION]);
   }
 }

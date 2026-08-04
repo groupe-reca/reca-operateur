@@ -41,11 +41,10 @@ type Props = {
   onReportProblem?: () => void;
   onResolveProblem?: () => void;
   onSkipItem?: () => void;
-  // Sprint 019 — the header's hamburger has never had a real destination
-  // (Mission/Plus/Alertes are still placeholders, docs/11). The only real
-  // caller today is the dev-only "Développement" screen (LiveMissionScreen,
-  // gated by `__DEV__`) — no-op default keeps every other caller/mock
-  // unchanged.
+  // Sprint 019 — introduced with no real destination yet (Mission/Plus/
+  // Alertes are still placeholders, docs/11). Sprint "Paramètres": now
+  // wired by `LiveMissionScreen.tsx` to open `SettingsScreen` — no-op
+  // default keeps `MissionScreenPreview`/other callers unchanged.
   onMenu?: () => void;
 };
 

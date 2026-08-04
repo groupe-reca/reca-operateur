@@ -12,6 +12,7 @@ import { EndOfMissionScreen } from './EndOfMissionScreen';
 import { MissionActiveScreen } from './MissionActiveScreen';
 import { MissionScreen } from './MissionScreen';
 import { NoMissionScreen } from './NoMissionScreen';
+import { SettingsScreen } from './SettingsScreen';
 import { Txt } from '../components/ui/Txt';
 
 // Sprint 017 (partie 1/N) — the real entry point promised since Sprint 004
@@ -25,6 +26,7 @@ export function LiveMissionScreen() {
   const [closed, setClosed] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
   const [devScreenOpen, setDevScreenOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
@@ -81,11 +83,24 @@ export function LiveMissionScreen() {
   }
 
   // Sprint 019 — docs/11 "Développement" écran : gated by `__DEV__` (false
-  // in a release build) rather than an invented user role — see
-  // MissionScreen.tsx's `onMenu` prop, the only real caller of
-  // `setDevScreenOpen(true)`.
+  // in a release build) rather than an invented user role. Since Sprint
+  // "Paramètres", reached from a "Mode développement" row inside
+  // SettingsScreen rather than directly from the header — the hamburger's
+  // real destination is Settings now.
   if (__DEV__ && devScreenOpen) {
     return <DevScreen ctx={ctx} onClose={() => setDevScreenOpen(false)} />;
+  }
+
+  // Sprint "Paramètres" — docs/11 "Paramètres" écran, the header
+  // hamburger's real destination (`MissionScreen.onMenu`).
+  if (settingsOpen) {
+    return (
+      <SettingsScreen
+        ctx={ctx}
+        onClose={() => setSettingsOpen(false)}
+        onOpenDevMode={__DEV__ ? () => setDevScreenOpen(true) : undefined}
+      />
+    );
   }
 
   // Sprint 018 — no residence left to work on: show the real "Fin de
@@ -155,7 +170,7 @@ export function LiveMissionScreen() {
       // encore pour choisir un type de problème, et `problemCode` n'a aucune
       // taxonomie documentée (docs/03/docs/09/docs/07) — en inventer une ici
       // serait une règle métier non validée. Suivi ouvert, pas un oubli.
-      onMenu={__DEV__ ? () => setDevScreenOpen(true) : undefined}
+      onMenu={() => setSettingsOpen(true)}
     />
   );
 }

@@ -450,4 +450,20 @@ describe('MissionContext — real engines wired over a fake DB', () => {
 
     expect(outcome?.success).toBe(false);
   });
+
+  it('voiceEnabled defaults to true and setVoiceEnabled toggles it (SettingsScreen wiring)', async () => {
+    const { result } = renderMissionContext();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.voiceEnabled).toBe(true);
+
+    act(() => {
+      result.current.setVoiceEnabled(false);
+    });
+    await waitFor(() => expect(result.current.voiceEnabled).toBe(false));
+
+    act(() => {
+      result.current.setVoiceEnabled(true);
+    });
+    await waitFor(() => expect(result.current.voiceEnabled).toBe(true));
+  });
 });

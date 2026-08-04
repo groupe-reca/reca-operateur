@@ -1277,6 +1277,48 @@ d'oiseau, pas une distance routière (nécessiterait la Directions API, hors sco
 `residenceEtaLabel` reste `—` : une vraie ETA a besoin d'une durée routée, pas juste d'une distance.
 Vérifié en direct (« À 294 m » affiché) + 3 nouveaux tests (`deriveMissionScreenState.test.ts`).
 
+**Bug 5 — migration SQLite manquante, corrigé** (Sprint « Migration SQLite versionnée + écran
+Paramètres », 2026-08-03) : le Bug 1 ci-dessus n'était contourné que par un vidage de données, pas
+réparé. `src/persistence/migrations.ts` avait déjà un `schema_version` stocké mais jamais
+réellement utilisé pour piloter quoi que ce soit — `SCHEMA_VERSION` passe à 2,
+`columnExists`/`addColumnIfMissing` (lisent `PRAGMA table_info`, `ALTER TABLE ... ADD COLUMN`
+seulement si la colonne manque — sûr à rejouer sur une base neuve comme ancienne), `migrateTo2`
+ajoute les 9 colonnes manquantes de `sync_operations`. Un tableau `MIGRATIONS` ordonné par version
+cible — chaque future migration = une nouvelle entrée, jamais de réécriture d'une entrée existante
+(pattern extensible, pas un correctif ponctuel). `tests/testFakeDb.ts` (le faux `Db` partagé par
+tous les autres tests) ne suit **pas** de vraies colonnes par table — jamais eu besoin jusqu'ici,
+les repositories ne font que lire/écrire des lignes complètes. Un second faux `Db`, dédié
+(`tests/migrations.test.ts`), a dû être écrit spécifiquement pour ce test — celui-là suit vraiment
+les colonnes (`CREATE TABLE`/`ALTER TABLE`/`PRAGMA table_info` minimalement parsés), pour
+reproduire fidèlement le schéma cassé trouvé sur le TECNO KL4 plutôt que de juste vérifier le code
+en théorie.
+
+## Sprint « Migration SQLite versionnée + écran Paramètres » (2026-08-03)
+
+- **Choisi avec le propriétaire pour avancer** : deux tâches indépendantes regroupées dans le même
+  sprint — le Bug 5 ci-dessus (déjà détaillé) et l'écran « Paramètres » (`docs/11` Écrans finaux).
+- **`docs/11` Paramètres est très vague** (« voix, volume, carte, thème, préférences d'affichage,
+  confidentialité, compte, version — contenir uniquement les options utiles ») — sur 8 items
+  suggérés, seuls 4 avaient un vrai mécanisme derrière dans ce repo : Voix
+  (`voiceEngine.setEnabled`/`isEnabled`, Sprint 016, jamais appelé jusqu'ici — même schéma que
+  chaque moteur « construit mais jamais câblé » de ce repo), Compte (`useAuth()`, déjà utilisé par
+  `NoMissionScreen`), Version (`package.json`, `resolveJsonModule` déjà activé par
+  `expo/tsconfig.base` — aucune nouvelle dépendance comme `expo-constants` nécessaire), Thème
+  (affichage statique « Sombre » — honnête, l'app n'a **jamais** eu de bascule de thème,
+  `userInterfaceStyle` fixé dans `app.json` depuis le Sprint 001). Volume/carte/préférences
+  d'affichage/confidentialité n'ont **aucun** mécanisme réel dans ce repo — délibérément absents,
+  même règle que chaque écran précédent (`docs/10` « ne jamais masquer une erreur par une valeur
+  fictive » s'applique aussi à l'inverse : ne jamais fabriquer un contrôle qui ne contrôle rien).
+- **Le hamburger change de destination réelle** : depuis le Sprint 019, `onMenu` (`AppHeader`/
+  `MissionScreen`) n'ouvrait `DevScreen` qu'en `__DEV__` (sinon no-op). Il ouvre maintenant
+  `SettingsScreen` **en permanence** — c'est la vraie attente d'un hamburger dans une app produit.
+  `DevScreen` reste joignable, mais un niveau plus loin : un item « Mode développement » à
+  l'intérieur de `SettingsScreen`, toujours gardé par `__DEV__` (même barrière d'accès, juste
+  déplacée). Pas de régression pour le workflow dev — juste un tap de plus.
+- **Navigation hamburger→Paramètres non vérifiée manuellement sur l'appareil** : le propriétaire a
+  demandé de mettre ce test de côté pour avancer plus vite pendant la session — seuls les tests
+  automatisés (`tests/settingsScreen.test.tsx`) couvrent ce chemin. Suivi ouvert non bloquant.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,
