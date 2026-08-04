@@ -64,19 +64,22 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 - `src/app/` — composition racine (providers, thème, montage). Vide.
 - `src/screens/`
   - `LiveMissionScreen.tsx` (Sprint 017 partie 1/N, 2026-08-02, **nouveau point d'entrée réel** ;
-    étendu Sprints 018/019/017-partie-2/Mission-active) — `useMissionContext()` →
+    étendu Sprints 018/019/017-partie-2/Mission-active/Paramètres) — `useMissionContext()` →
     `deriveMissionScreenState(ctx, new Date())` (mémoïsé sur les champs utiles, pas sur `ctx`
     entier) → `MissionScreen`. Ordre de priorité : `loading` → `__DEV__ && devScreenOpen`
-    (Sprint 019, `DevScreen`, état local mis à `true` via `onMenu` du header, jamais en build
-    release) → `deriveEndOfMissionState(ctx, new Date())` non nul (Sprint 018, `EndOfMissionScreen`
-    — mission éligible à la fermeture) → `!mission || mission.status === 'COMPLETED'` (Sprint 017
-    partie 2/N, `NoMissionScreen` — vrai écran « Aucune mission » `docs/11`, remplace l'ancien
-    repli générique pour ce cas précis) → `missionActiveState` non nul (Sprint « Mission active »,
-    `mission.status === 'READY'`, `MissionActiveScreen` — **change le comportement précédent** :
-    une mission `READY` allait auparavant directement à l'écran de travail, artefact de l'écran
-    manquant) → `screenState`/`MissionScreen` → repli minimal texte résiduel (mission `IN_PROGRESS`
-    sans aucun `MissionItem` — combinaison non décrite par `docs/11`). Câble `onResolveProblem`/
-    `onSkipItem` aux commandes réelles du contexte ; **`onReportProblem` volontairement sans
+    (Sprint 019, `DevScreen`, état local mis à `true` via « Mode développement » dans
+    `SettingsScreen`, jamais en build release) → `settingsOpen` (Sprint « Paramètres »,
+    `SettingsScreen` — **vraie destination du hamburger désormais**, remplace le branchement
+    direct vers `DevScreen`) → `deriveEndOfMissionState(ctx, new Date())` non nul (Sprint 018,
+    `EndOfMissionScreen` — mission éligible à la fermeture) → `!mission || mission.status ===
+    'COMPLETED'` (Sprint 017 partie 2/N, `NoMissionScreen` — vrai écran « Aucune mission »
+    `docs/11`, remplace l'ancien repli générique pour ce cas précis) → `missionActiveState` non nul
+    (Sprint « Mission active », `mission.status === 'READY'`, `MissionActiveScreen` — **change le
+    comportement précédent** : une mission `READY` allait auparavant directement à l'écran de
+    travail, artefact de l'écran manquant) → `screenState`/`MissionScreen` → repli minimal texte
+    résiduel (mission `IN_PROGRESS` sans aucun `MissionItem` — combinaison non décrite par
+    `docs/11`). Câble `onResolveProblem`/`onSkipItem` aux commandes réelles du contexte ;
+    **`onReportProblem` volontairement sans
     effet** — aucune UI/taxonomie de `problemCode` documentée, voir `memory.md`.
     `handleCloseMission` (Sprint 018)/`handleStartMission` (Sprint « Mission active ») gèrent leur
     état `closing`/`closed`/`closeError`/`starting`/`startError` local, appellent
@@ -122,6 +125,15 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     (`ctx.refreshAssignment()`), bouton Déconnexion (`useAuth().logout()`, masqué si non
     authentifié). « Ne doit pas ressembler à un tableau de bord administratif » — pas de
     liste/tableau, juste ce que `docs/11` demande.
+  - `SettingsScreen.tsx` (Sprint « Migration SQLite versionnée + écran Paramètres », 2026-08-03,
+    testé `tests/settingsScreen.test.tsx`) — écran « Paramètres » (`docs/11` Écrans finaux) : seuls
+    les 4 items avec un vrai mécanisme sont construits — Voix (`ctx.voiceEnabled`/
+    `setVoiceEnabled`, `Switch`), Compte (email + Déconnexion via `useAuth()`), Thème (affichage
+    statique « Sombre »), Version (`package.json`). Volume/carte/préférences d'affichage/
+    confidentialité délibérément absents (aucun mécanisme réel, voir `memory.md`). Item « Mode
+    développement » (ouvre `DevScreen`) affiché seulement si `onOpenDevMode` est fourni — `__DEV__`
+    côté appelant. **Point d'entrée réel du hamburger** (`AppHeader`/`MissionScreen.onMenu`) depuis
+    cette passe — remplace le branchement direct vers `DevScreen` du Sprint 019.
   - `MissionActiveScreen.tsx` (Sprint « Mission active », 2026-08-03) — écran « Mission active »
     (`docs/11` Écrans finaux) : résumé mission (secteur/date), équipement (`Mission.equipment`),
     nombre de résidences, section « Préparation hors ligne » (état sync/réseau réels, pas un
@@ -285,7 +297,9 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     `memory.md` : sans ça, une vraie mission dont tous les items sont encore `WAITING` n'avait
     aucun écran à afficher après démarrage) + **`refreshAssignment`** (Sprint 017 partie 2/N
     — relance `fetchAssignedMission` sans redémarrer capteurs/session, appelée par
-    `NoMissionScreen`) + **`dev`** (Sprint 019, `DevTools` — `gps`
+    `NoMissionScreen`) + **`voiceEnabled`/`setVoiceEnabled`** (Sprint « Paramètres » — câble
+    `voiceEngine.setEnabled`/`isEnabled` du Sprint 016, jamais appelé jusqu'ici, appelé par
+    `SettingsScreen`) + **`dev`** (Sprint 019, `DevTools` — `gps`
     enveloppe `createGpsSimulator` autour de `gpsEngineRef` avec rechargement `afterMutation`
     intégré ; `thresholds` = `DEFAULT_GPS_THRESHOLDS` telle quelle, jamais overridée ; `getStates`/
     `getEvents` agrègent ce que les 4 moteurs exposent déjà ; `getSyncQueue`/`getTransitions`
@@ -316,8 +330,13 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     transaction), jamais `expo-sqlite` importé ailleurs que dans `db.ts`.
   - `db.ts` — connexion singleton (`getDb()`), import **dynamique** d'`expo-sqlite` (évite de
     toucher le module natif rien qu'en important ce fichier — utile sous Jest).
-  - `migrations.ts` — création des 7 tables (`CREATE TABLE IF NOT EXISTS`, idempotent),
-    `schema_version`.
+  - `migrations.ts` (versionné depuis 2026-08-03, testé `tests/migrations.test.ts`) — création des
+    7 tables (`CREATE TABLE IF NOT EXISTS`, idempotent mais seulement pour une table qui n'existe
+    pas encore), `schema_version` réellement utilisé maintenant : `SCHEMA_VERSION = 2`, tableau
+    `MIGRATIONS` ordonné, `migrateTo2` ajoute les 9 colonnes du Sprint 013-014 à `sync_operations`
+    (`ALTER TABLE ADD COLUMN` via `addColumnIfMissing`/`PRAGMA table_info`) — **bug réel
+    trouvé/corrigé sur device** : un appareil ayant une base antérieure au Sprint 013-014 plantait
+    sur chaque écriture (`table sync_operations has no column named mission_id`), voir `memory.md`.
   - `repositories/createRepository.ts` — factory générique CRUD (get-all/get-by-id/upsert/
     delete), réutilisé par les 7 repositories spécifiques (`mission`, `missionItem`,
     `stateTransition`, `syncOperation`, `operatorSession`, `problem`, `missionAlert`).
@@ -447,14 +466,14 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   existent, `offline` présent seulement hors `ONLINE`, résidences carte plafonnées à 5 en filtrant
   celles sans coordonnées.
 - `tests/missionContext.test.tsx` (Sprint 017 partie 1/N, 2026-08-02 ; étendu Sprints
-  018/019/017-partie-2/Mission-active) — 13 tests d'intégration réelle (`MissionProvider` sur un
-  faux `Db`/transport Sync/`Speaker`/`LocationProvider`/`NetworkSensor` injectés — jamais de vrai
-  réseau/synthèse/capteur, voir `getDbOverride`/`syncTransportOverride`/`speakerOverride`/
-  `locationProviderOverride`/`networkSensorOverride`) : chargement de la mission de démo (premier
-  item EN_ROUTE actif), `reportProblem` → `PROBLEM` + `activeMissionItem` redevient `null`,
-  `resolveProblem` → retour à un état actif, `skipItem` → `SKIPPED` + opération de sync mise en
-  file, `startMission` READY→IN_PROGRESS réel puis refus (transition dupliquée) si déjà
-  `IN_PROGRESS`, `closeMission` refusé tant qu'un item `WAITING`/actif subsiste, `closeMission`
+  018/019/017-partie-2/Mission-active/Paramètres) — 15 tests d'intégration réelle
+  (`MissionProvider` sur un faux `Db`/transport Sync/`Speaker`/`LocationProvider`/`NetworkSensor`
+  injectés — jamais de vrai réseau/synthèse/capteur, voir `getDbOverride`/`syncTransportOverride`/
+  `speakerOverride`/`locationProviderOverride`/`networkSensorOverride`) : chargement de la mission
+  de démo (premier item EN_ROUTE actif), `reportProblem` → `PROBLEM` + `activeMissionItem`
+  redevient `null`, `resolveProblem` → retour à un état actif, `skipItem` → `SKIPPED` + opération
+  de sync mise en file, `startMission` READY→IN_PROGRESS réel puis refus (transition dupliquée) si
+  déjà `IN_PROGRESS`, `closeMission` refusé tant qu'un item `WAITING`/actif subsiste, `closeMission`
   réussit une fois `startMission` appelé et tous les items résolus (`SKIPPED` autorisé),
   `dev.setNetworkOverride(false)`/`(null)` force `offlineState` OFFLINE puis RECOVERING,
   `dev.gps.moveTo`/`advanceTime` déclenchent une vraie transition EN_ROUTE→APPROACHING via le State
@@ -463,8 +482,9 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   (`locationProviderOverride`) pousse des fix qui déclenchent la même transition par le chemin
   capteur réel (`gpsState` reflète `{available:true}`), `gpsState` `permission_denied` quand le
   fournisseur refuse, **un écouteur réseau réel** (indépendant du mode dev) met à jour
-  `realNetworkStatusRef`, `dev.setNetworkOverride(null)` retombe dessus. Mutations enveloppées dans
-  `act()` (State Machine → contexte → re-render, comme tout hook React testé).
+  `realNetworkStatusRef`, `dev.setNetworkOverride(null)` retombe dessus, `voiceEnabled` par défaut
+  `true`/`setVoiceEnabled` bascule (Sprint « Paramètres »). Mutations enveloppées dans `act()`
+  (State Machine → contexte → re-render, comme tout hook React testé).
 - `tests/deriveMissionActiveState.test.ts` (Sprint « Mission active », 2026-08-03) — 6 tests purs :
   `null` sans mission, `null` si `status !== 'READY'` (`IN_PROGRESS`/`COMPLETED`), éligible pour
   `READY` avec décompte/équipement/alertes vides, mapping `missionAlerts` → niveau/texte, reflet
@@ -482,6 +502,16 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
   (`useAuth()` mocké via `jest.mock('@/context/AuthContext')`, `ctx` factice) : affiche
   l'utilisateur connecté/l'état réseau/le message clair, « Actualiser » appelle
   `ctx.refreshAssignment()`, « Déconnexion » appelle `auth.logout()`, masqué quand non authentifié.
+- `tests/settingsScreen.test.tsx` (Sprint « Migration SQLite versionnée + écran Paramètres »,
+  2026-08-03) — 5 tests de rendu (`useAuth()` mocké) : affiche utilisateur/thème/version/état du
+  `Switch` voix, « Fermer » appelle `onClose`, bascule du `Switch` appelle `ctx.setVoiceEnabled`,
+  « Déconnexion » appelle `auth.logout()`, « Mode développement » visible/cliquable seulement si
+  `onOpenDevMode` est fourni (`__DEV__` côté appelant).
+- `tests/migrations.test.ts` (2026-08-03) — 3 tests avec un faux `Db` schema-aware dédié (suit
+  vraiment les colonnes par table, contrairement à `tests/testFakeDb.ts`) : une install neuve
+  obtient toutes les colonnes de `sync_operations`, un appareil bloqué sur le schéma d'avant le
+  Sprint 013-014 (reproduit exactement le schéma cassé trouvé sur le TECNO KL4, voir `memory.md`)
+  reçoit les colonnes manquantes, ré-exécuter `runMigrations` est un no-op idempotent.
 - `scripts/` — scripts de dev (vide).
 
 ## Dépendances critiques (à surveiller — `docs/10`)

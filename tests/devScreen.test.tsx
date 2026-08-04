@@ -49,6 +49,8 @@ function makeCtx(overrides: Partial<MissionContextValue> = {}): MissionContextVa
     synchronizationState: { status: 'SYNCED', pendingCount: 0, failedCount: 0 },
     offlineState: { status: 'ONLINE', since: '2026-08-02T10:00:00.000Z', lastOnlineAt: '2026-08-02T10:00:00.000Z' },
     session: null,
+    voiceEnabled: true,
+    setVoiceEnabled: jest.fn(),
     reportProblem: jest.fn(),
     resolveProblem: jest.fn(),
     skipItem: jest.fn(),

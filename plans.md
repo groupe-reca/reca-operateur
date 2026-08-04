@@ -10,6 +10,75 @@
 
 ## Archivé
 
+### ✅ Migration SQLite versionnée + écran « Paramètres » (branche
+`sprint-migrations-parametres`, 2026-08-03)
+
+**Objectif** : deux tâches choisies avec le propriétaire — corriger le bug de migration SQLite
+trouvé au test device (suivi ouvert depuis `memory.md`/`tasks.md`) et livrer l'écran
+« Paramètres » (`docs/11` Écrans finaux).
+
+**1. Migration SQLite versionnée** (`src/persistence/migrations.ts`) :
+- `SCHEMA_VERSION` passe à 2. `columnExists`/`addColumnIfMissing` (lisent `PRAGMA table_info`,
+  `ALTER TABLE ... ADD COLUMN` seulement si absente) — safe à rejouer sur une base neuve (colonnes
+  déjà là via `CREATE TABLE`) comme sur une base ancienne.
+- `migrateTo2` ajoute les 9 colonnes du Sprint 013-014 à `sync_operations`
+  (`mission_id`/`mission_item_id`/`local_sequence`/`attempt_count`/`idempotency_key`/
+  `last_attempt_at`/`next_attempt_at`/`last_error_code`/`last_error_message`) si absentes.
+- `runMigrations` lit `schema_version` (0 si absent), exécute chaque migration dont la version
+  cible dépasse la version courante, met à jour `schema_version` à la fin. Tableau `MIGRATIONS`
+  ordonné — futures migrations = nouvelles entrées, jamais de réécriture d'une entrée existante.
+- Test dédié (`tests/migrations.test.ts`) avec un faux `Db` qui suit vraiment les colonnes par
+  table (`tests/testFakeDb.ts` ne le fait pas, jamais eu besoin jusqu'ici) — reproduit exactement
+  le schéma cassé trouvé sur l'appareil réel.
+
+**2. Écran « Paramètres »** (`docs/11` : voix/volume/carte/thème/préférences d'affichage/
+confidentialité/compte/version — « contenir uniquement les options utiles ») : seuls les items
+avec un vrai mécanisme derrière sont construits, le reste documenté hors scope plutôt qu'inventé
+(même règle que chaque écran précédent) :
+- **Voix** : `voiceEngine.setEnabled`/`isEnabled` (Sprint 016) existaient déjà, jamais exposés —
+  nouveau `MissionContext.voiceEnabled`/`setVoiceEnabled`. Interrupteur réel.
+- **Compte** : email (`useAuth()`, déjà utilisé par `NoMissionScreen`) + Déconnexion.
+- **Version** : `package.json` (`resolveJsonModule` déjà activé, `expo/tsconfig.base` — pas de
+  nouvelle dépendance).
+- **Thème** : affichage statique « Sombre » — l'app n'a jamais eu de bascule de thème
+  (`userInterfaceStyle` fixé dans `app.json`, `docs/01`), l'inventer serait une fonctionnalité non
+  demandée.
+- **Hors scope, non inventé** : volume (pas de mécanisme de contrôle applicatif — le volume
+  matériel du téléphone s'applique déjà), carte (aucune préférence de style modélisée, un seul
+  style Mapbox existe), préférences d'affichage, confidentialité (aucun contenu/mécanisme réel
+  documenté nulle part).
+- **Point d'entrée** : le hamburger (`AppHeader`/`MissionScreen.onMenu`) ouvre désormais
+  `SettingsScreen` en permanence (au lieu de `DevScreen` en `__DEV__` uniquement, Sprint 019) —
+  c'est la vraie destination attendue d'un hamburger. `DevScreen` reste accessible via un item
+  « Mode développement » dans `SettingsScreen`, visible seulement si `__DEV__` (même barrière
+  d'accès qu'avant, juste un niveau plus loin).
+
+**Vérification** : tests purs/intégration (`migrations.test.ts`, contexte `voiceEnabled`) ;
+`tsc`/`eslint`/`jest` verts ; `expo-doctor` ; vérifié sur device si possible (aucune nouvelle
+dépendance native, JS + persistance uniquement).
+
+**Réalisé conformément au plan, du premier coup** :
+- Migration : `SCHEMA_VERSION` → 2, `columnExists`/`addColumnIfMissing`/`migrateTo2`/tableau
+  `MIGRATIONS` ordonné, tel que décrit. `tests/migrations.test.ts` (nouveau, faux `Db`
+  schema-aware dédié — `tests/testFakeDb.ts` ne suit pas de vraies colonnes) : 3 tests (install
+  neuve, appareil bloqué sur l'ancien schéma `sync_operations` — reproduit exactement le schéma
+  cassé trouvé sur le TECNO KL4 —, ré-exécution idempotente).
+- Paramètres : `MissionContext.voiceEnabled`/`setVoiceEnabled` (câble `voiceEngine.setEnabled`,
+  Sprint 016, jamais appelé jusqu'ici) ; `SettingsScreen.tsx` (Compte/Voix/Thème/Version + « Mode
+  développement » si `__DEV__`) ; `LiveMissionScreen.tsx` — hamburger ouvre désormais
+  `SettingsScreen` (remplace le branchement direct vers `DevScreen` du Sprint 019, déplacé un
+  niveau plus loin dans les Paramètres). Vérifié en direct sur l'appareil (rechargement JS sans
+  erreur, distance résidence toujours affichée) — **navigation vers Paramètres elle-même non
+  vérifiée manuellement sur l'appareil** (mise de côté par le propriétaire pour avancer), couverte
+  uniquement par les tests automatisés (`tests/settingsScreen.test.tsx`, 5 tests).
+- **Vérification** : `tsc --noEmit`/`eslint .`/`npx jest` tous verts (171/171 tests, dont 3
+  nouveaux `migrations.test.ts` + 2 nouveaux tests d'intégration `voiceEnabled` dans
+  `missionContext.test.tsx` + 5 nouveaux `settingsScreen.test.tsx`), `npx expo-doctor` 19/20 (seul
+  échec : dérive `react-native-gesture-handler` pré-existante, sans rapport, `package.json` non
+  touché).
+
+## Archivé
+
 ### ✅ Sprint — Écran « Mission active » (branche `sprint-mission-active-screen`, 2026-08-03)
 
 **Objectif** (`docs/11-Roadmap.md` Écran « Mission active ») : consulter la mission, démarrer,

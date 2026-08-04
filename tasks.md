@@ -471,11 +471,11 @@
   PR #4/#5) — build/install exécutés **depuis ce VPS** (adb/JDK 17/Android SDK confirmés présents
   et un appareil connecté, contrairement à l'hypothèse par défaut de `CLAUDE.md` — voir
   `memory.md`). **5 bugs réels trouvés** :
-  - [ ] **Suivi ouvert, non résolu** — migration SQLite manquante : `sync_operations` (`CREATE
-    TABLE IF NOT EXISTS`) n'ajoute jamais les colonnes du Sprint 013-014 sur un appareil ayant déjà
-    une base locale antérieure (`table sync_operations has no column named mission_id`).
-    Contourné pour ce test (`adb shell pm clear`), pas corrigé — un vrai mécanisme de migration
-    versionnée reste à construire avant un pilote multi-appareils.
+  - [x] **Corrigé** (voir « Migration SQLite versionnée + écran « Paramètres » » ci-dessous) —
+    migration SQLite manquante : `sync_operations` (`CREATE TABLE IF NOT EXISTS`) n'ajoutait jamais
+    les colonnes du Sprint 013-014 sur un appareil ayant déjà une base locale antérieure. Contourné
+    pour ce test (`adb shell pm clear`) puis corrigé pour de bon par un vrai mécanisme de migration
+    versionnée.
   - [x] **Corrigé** — `recoverOnStartup` (State Machine, Sprint 009-010) n'était jamais appelé
     dans `MissionContext.tsx` (invisible car la mission de démo pré-active toujours son premier
     item) : après « Démarrer la tournée » sur une vraie mission (tous les items `WAITING`),
@@ -502,6 +502,31 @@
     d'oiseau, pas routière. `residenceEtaLabel` reste `—` (nécessiterait une durée routée, hors
     scope). Vérifié en direct (« À 294 m » affiché).
   Vérifié : `tsc`/`eslint`/`jest` verts (162/162, 18 suites).
+- [x] **Migration SQLite versionnée + écran « Paramètres »** (branche
+  `sprint-migrations-parametres`, 2026-08-03, PR :
+  https://github.com/groupe-reca/reca-operateur/pull/6) — deux tâches choisies avec le propriétaire
+  pour avancer : le bug de migration SQLite trouvé au test device (suivi ouvert) et l'écran
+  « Paramètres » (`docs/11` Écrans finaux).
+  - [x] **Migration** : `src/persistence/migrations.ts` — `SCHEMA_VERSION` → 2,
+    `columnExists`/`addColumnIfMissing` (lisent `PRAGMA table_info`, `ALTER TABLE ADD COLUMN`
+    seulement si absente), `migrateTo2` ajoute les 9 colonnes du Sprint 013-014 à
+    `sync_operations` sur un appareil resté sur l'ancien schéma. Tableau `MIGRATIONS` ordonné —
+    futures migrations = nouvelles entrées, jamais de réécriture. `tests/migrations.test.ts`
+    (nouveau, faux `Db` schema-aware) reproduit exactement le schéma cassé trouvé sur le TECNO KL4.
+  - [x] **Écran Paramètres** : seuls les items avec un vrai mécanisme sont construits — Voix
+    (`MissionContext.voiceEnabled`/`setVoiceEnabled`, câble `voiceEngine.setEnabled` du
+    Sprint 016, jamais appelé jusqu'ici), Compte (email + Déconnexion, `useAuth()`), Version
+    (`package.json`), Thème (affichage statique « Sombre », l'app n'a jamais eu de bascule).
+    **Hors scope, non inventé** : volume/carte/préférences d'affichage/confidentialité (aucun
+    mécanisme réel documenté). Hamburger (`AppHeader`/`MissionScreen.onMenu`) ouvre désormais
+    `SettingsScreen` en permanence (remplace le branchement direct vers `DevScreen`, Sprint 019) ;
+    `DevScreen` reste accessible via « Mode développement » dans Paramètres, visible seulement si
+    `__DEV__`. **Navigation hamburger→Paramètres non vérifiée manuellement sur l'appareil** (mis
+    de côté par le propriétaire pour avancer plus vite) — couverte par les tests automatisés
+    seulement.
+  Vérifié : `tsc`/`eslint`/`jest` verts (171/171, 20 suites, dont 3 nouveaux `migrations.test.ts` +
+  2 nouveaux tests `voiceEnabled` + 5 nouveaux `settingsScreen.test.tsx`)/`expo-doctor` 19/20
+  (dérive `react-native-gesture-handler` pré-existante, sans rapport).
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 
 ## À vérifier

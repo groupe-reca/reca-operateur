@@ -87,6 +87,11 @@ export type MissionContextValue = {
   synchronizationState: SynchronizationState;
   offlineState: OfflineState;
   session: OperatorSession | null;
+  // Sprint « Paramètres » — the Voice Engine's own silent mode
+  // (`setEnabled`/`isEnabled`, Sprint 016) existed since 2026-08-02 but had
+  // no caller until SettingsScreen.tsx.
+  voiceEnabled: boolean;
+  setVoiceEnabled(enabled: boolean): void;
   // Sprint 017 (partie 1/N) — commands wired to the real State Machine,
   // bound to buttons that already exist in the UI (CurrentResidenceSheet
   // "Signaler", ProblemStateCard "Reprendre plus tard"/"Passer à la
@@ -228,6 +233,7 @@ export function MissionProvider({
     lastOnlineAt: systemClock.now().toISOString(),
   });
   const [gpsState, setGpsState] = useState<GpsState>({ available: false, reason: 'unavailable' });
+  const [voiceEnabled, setVoiceEnabledState] = useState(true);
 
   const dbRef = useRef<Db | null>(null);
   const stateMachineRef = useRef<StateMachine | null>(null);
@@ -556,6 +562,12 @@ export function MissionProvider({
     return result;
   }
 
+  // Sprint « Paramètres » — "Voix" toggle on SettingsScreen.tsx.
+  function setVoiceEnabled(enabled: boolean): void {
+    voiceEngineRef.current?.setEnabled(enabled);
+    setVoiceEnabledState(enabled);
+  }
+
   // Sprint 017 (partie 2/N) — "Actualiser" button on NoMissionScreen.tsx
   // (docs/11 "Aucune mission"). Re-runs the same assignment lookup the
   // mount effect does (`fetchAssignedMission` if authenticated, else keep
@@ -705,6 +717,8 @@ export function MissionProvider({
     synchronizationState,
     offlineState,
     session,
+    voiceEnabled,
+    setVoiceEnabled,
     reportProblem,
     resolveProblem,
     skipItem,
