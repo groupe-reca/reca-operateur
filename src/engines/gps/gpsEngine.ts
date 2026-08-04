@@ -36,7 +36,11 @@ function secondsBetween(from: Date, to: Date): number {
 // (docs/04 "il ne possède aucune interface graphique… ne communique jamais
 // directement avec Supabase").
 export function createGpsEngine({ stateMachine, clock, thresholds: overrides }: GpsEngineDependencies) {
-  const thresholds: GpsThresholds = { ...DEFAULT_GPS_THRESHOLDS, ...overrides };
+  // Mutable (not `const`) — `setThresholds` (below) is what lets a caller
+  // change these after creation, e.g. SettingsScreen's detection radii,
+  // without tearing down and recreating the whole engine (which would lose
+  // `active`/`phase`/`pending` mid-mission).
+  let thresholds: GpsThresholds = { ...DEFAULT_GPS_THRESHOLDS, ...overrides };
 
   let active: ActiveResidence | null = null;
   let next: NextResidence | null = null;
@@ -246,6 +250,15 @@ export function createGpsEngine({ stateMachine, clock, thresholds: overrides }: 
     on,
     getEvents: (): GpsEngineEvent[] => [...events],
     getPhase: (): Phase => phase,
+    getThresholds: (): GpsThresholds => ({ ...thresholds }),
+    // Sprint "Réglages du rayon de détection" — merges into the current
+    // thresholds (partial update, same shape as the constructor override).
+    // Takes effect on the very next `updatePosition`/`checkTimeout` call —
+    // `active`/`phase`/`pending` are untouched, so a mid-approach residence
+    // doesn't reset just because the operator tweaked a radius.
+    setThresholds(update: Partial<GpsThresholds>): void {
+      thresholds = { ...thresholds, ...update };
+    },
   };
 }
 

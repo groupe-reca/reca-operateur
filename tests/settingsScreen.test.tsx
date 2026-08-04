@@ -1,6 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { DEFAULT_GPS_THRESHOLDS } from '@/engines/gps';
 import { SettingsScreen } from '@/screens/SettingsScreen';
 
 // Same synthetic metrics as missionScreen.test.tsx/noMissionScreen.test.tsx.
@@ -22,10 +23,19 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ ...mockAuthState, logout: mockLogout }),
 }));
 
-function makeCtx(overrides: Partial<{ voiceEnabled: boolean; setVoiceEnabled: jest.Mock }> = {}) {
+function makeCtx(
+  overrides: Partial<{
+    voiceEnabled: boolean;
+    setVoiceEnabled: jest.Mock;
+    detectionRadii: typeof DEFAULT_GPS_THRESHOLDS;
+    setDetectionRadii: jest.Mock;
+  }> = {}
+) {
   return {
     voiceEnabled: true,
     setVoiceEnabled: jest.fn(),
+    detectionRadii: DEFAULT_GPS_THRESHOLDS,
+    setDetectionRadii: jest.fn().mockReturnValue({ success: true }),
     ...overrides,
   };
 }
@@ -93,5 +103,51 @@ describe('SettingsScreen', () => {
     );
     fireEvent.press(queryByText('Mode développement') as never);
     expect(onOpenDevMode).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the current detection radii and saves valid changes via ctx.setDetectionRadii', () => {
+    const ctx = makeCtx();
+    const { getByTestId, getByText, queryByTestId } = renderScreen({ ctx, onClose: jest.fn() });
+
+    expect(getByTestId('approach-radius-input').props.value).toBe(String(DEFAULT_GPS_THRESHOLDS.approachRadiusMeters));
+    expect(getByTestId('work-radius-input').props.value).toBe(String(DEFAULT_GPS_THRESHOLDS.workRadiusMeters));
+
+    fireEvent.changeText(getByTestId('approach-radius-input'), '80');
+    fireEvent.changeText(getByTestId('work-radius-input'), '20');
+    fireEvent.press(getByText('Enregistrer'));
+
+    expect(ctx.setDetectionRadii).toHaveBeenCalledWith({ approachRadiusMeters: 80, workRadiusMeters: 20 });
+    expect(queryByTestId('radii-error')).toBeNull();
+    expect(getByTestId('radii-saved')).toBeTruthy();
+  });
+
+  it('shows the error message returned by ctx.setDetectionRadii and does not show "Enregistré"', () => {
+    const ctx = makeCtx({
+      setDetectionRadii: jest.fn().mockReturnValue({
+        success: false,
+        error: 'Le rayon « en cours » doit être plus petit que le rayon « en approche ».',
+      }),
+    });
+    const { getByTestId, getByText, queryByTestId } = renderScreen({ ctx, onClose: jest.fn() });
+
+    fireEvent.changeText(getByTestId('approach-radius-input'), '10');
+    fireEvent.changeText(getByTestId('work-radius-input'), '50');
+    fireEvent.press(getByText('Enregistrer'));
+
+    expect(getByTestId('radii-error')).toHaveTextContent(
+      'Le rayon « en cours » doit être plus petit que le rayon « en approche ».'
+    );
+    expect(queryByTestId('radii-saved')).toBeNull();
+  });
+
+  it('shows a validation error for non-numeric input without calling ctx.setDetectionRadii', () => {
+    const ctx = makeCtx();
+    const { getByTestId, getByText } = renderScreen({ ctx, onClose: jest.fn() });
+
+    fireEvent.changeText(getByTestId('approach-radius-input'), 'abc');
+    fireEvent.press(getByText('Enregistrer'));
+
+    expect(ctx.setDetectionRadii).not.toHaveBeenCalled();
+    expect(getByTestId('radii-error')).toHaveTextContent('Entrez des nombres valides.');
   });
 });

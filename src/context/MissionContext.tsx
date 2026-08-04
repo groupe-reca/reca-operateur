@@ -28,6 +28,11 @@ import { createVoiceEngine, type VoiceEngine } from '@/engines/voice';
 import type { VoiceEngineEvent } from '@/engines/voice/types';
 import { createExpoLocationProvider, type LocationProvider } from '@/integrations/location/expoLocationProvider';
 import { createNetInfoSensor, type NetworkSensor } from '@/integrations/network/expoNetInfoProvider';
+import {
+  createAsyncStorageDetectionRadii,
+  type DetectionRadiiOverride,
+  type DetectionRadiiStorage,
+} from '@/integrations/settings/detectionRadiiStorage';
 import { fetchAssignedMission } from '@/integrations/supabase/fetchAssignedMission';
 import { createSupabaseSyncTransport } from '@/integrations/supabase/supabaseSyncTransport';
 import { createExpoSpeaker } from '@/integrations/voice/expoSpeaker';
@@ -92,6 +97,13 @@ export type MissionContextValue = {
   // no caller until SettingsScreen.tsx.
   voiceEnabled: boolean;
   setVoiceEnabled(enabled: boolean): void;
+  // Sprint "Réglages du rayon de détection" — persisted (AsyncStorage,
+  // survives a restart), applied live to the already-running GPS Engine
+  // (`gpsEngine.setThresholds`, no engine recreation, no lost mission
+  // progress). `setDetectionRadii` validates before applying (positive,
+  // work radius < approach radius) rather than trusting the caller.
+  detectionRadii: GpsThresholds;
+  setDetectionRadii(update: DetectionRadiiOverride): { success: boolean; error?: string };
   // Sprint 017 (partie 1/N) — commands wired to the real State Machine,
   // bound to buttons that already exist in the UI (CurrentResidenceSheet
   // "Signaler", ProblemStateCard "Reprendre plus tard"/"Passer à la
@@ -155,8 +167,9 @@ export type DevEventsSnapshot = {
 
 export type DevTools = {
   gps: DevGpsSimulator;
-  // MissionContext never configures an override, so this is already the
-  // GPS Engine's real active configuration — nothing to recompute.
+  // The GPS Engine's real active thresholds — includes the operator's own
+  // detection-radii overrides (Sprint "Réglages du rayon de détection") once
+  // set, not just the hardcoded defaults.
   thresholds: GpsThresholds;
   getStates(): DevStatesSnapshot;
   getEvents(): DevEventsSnapshot;
@@ -206,6 +219,9 @@ type Props = {
   // modules, which don't exist under Jest.
   locationProviderOverride?: () => LocationProvider;
   networkSensorOverride?: () => NetworkSensor;
+  // Sprint "Réglages du rayon de détection" — same reasoning: without this, a
+  // test would touch the real AsyncStorage native module.
+  detectionRadiiStorageOverride?: () => DetectionRadiiStorage;
 };
 
 export function MissionProvider({
@@ -216,6 +232,7 @@ export function MissionProvider({
   speakerOverride,
   locationProviderOverride,
   networkSensorOverride,
+  detectionRadiiStorageOverride,
 }: Props) {
   const [mission, setMission] = useState<Mission | null>(null);
   const [items, setItems] = useState<MissionItem[]>([]);
@@ -234,10 +251,15 @@ export function MissionProvider({
   });
   const [gpsState, setGpsState] = useState<GpsState>({ available: false, reason: 'unavailable' });
   const [voiceEnabled, setVoiceEnabledState] = useState(true);
+  // Mirrors gpsEngine.getThresholds() so SettingsScreen/DevScreen re-render
+  // on change — the engine itself stays the single source of truth for
+  // actual GPS Engine behaviour, this is just a React-visible copy of it.
+  const [detectionRadii, setDetectionRadiiState] = useState<GpsThresholds>(DEFAULT_GPS_THRESHOLDS);
 
   const dbRef = useRef<Db | null>(null);
   const stateMachineRef = useRef<StateMachine | null>(null);
   const gpsEngineRef = useRef<GpsEngine | null>(null);
+  const detectionRadiiStorageRef = useRef<DetectionRadiiStorage | null>(null);
   const locationProviderRef = useRef<LocationProvider | null>(null);
   // Latest *validated* heading (see the HeadingChanged subscription below) —
   // read whenever a new position fix is recorded, never the raw fix heading.
@@ -279,8 +301,18 @@ export function MissionProvider({
       // wired further down (Sprint 017 partie 2/N).
       const stateMachine = createStateMachine(db, systemClock);
       stateMachineRef.current = stateMachine;
-      gpsEngineRef.current = createGpsEngine({ stateMachine, clock: systemClock });
+      // Sprint "Réglages du rayon de détection" — persisted overrides loaded
+      // before the engine exists, so a returning operator's saved radii
+      // apply from the very first `updatePosition`, not just after they
+      // reopen Paramètres.
+      const detectionRadiiStorage = (detectionRadiiStorageOverride ?? createAsyncStorageDetectionRadii)();
+      detectionRadiiStorageRef.current = detectionRadiiStorage;
+      const persistedRadii = await detectionRadiiStorage.load();
+      gpsEngineRef.current = createGpsEngine({ stateMachine, clock: systemClock, thresholds: persistedRadii });
       gpsSimulatorRef.current = createGpsSimulator(gpsEngineRef.current, systemClock);
+      if (!cancelled) {
+        setDetectionRadiiState(gpsEngineRef.current.getThresholds());
+      }
       // CLAUDE.md invariant: "c'est la carte qui tourne... cap validé après
       // temporisation, jamais le cap GPS brut" — the map's heading always
       // comes from the engine's own validated `HeadingChanged` event, never
@@ -568,6 +600,34 @@ export function MissionProvider({
     setVoiceEnabledState(enabled);
   }
 
+  // Sprint "Réglages du rayon de détection" — "Détection GPS" section on
+  // SettingsScreen.tsx. `workRadiusMeters < approachRadiusMeters` is a
+  // physical consequence of the EN_ROUTE→APPROACHING→IN_PROGRESS graph
+  // (docs/09) — you can't validly be "in work range" farther away than "in
+  // approach range" — not a new business rule, just input sanity.
+  function setDetectionRadiiCommand(update: DetectionRadiiOverride): { success: boolean; error?: string } {
+    const gpsEngine = gpsEngineRef.current;
+    if (!gpsEngine) {
+      return { success: false, error: 'GPS Engine indisponible.' };
+    }
+    const next: GpsThresholds = { ...gpsEngine.getThresholds(), ...update };
+    if (next.approachRadiusMeters <= 0 || next.workRadiusMeters <= 0) {
+      return { success: false, error: 'Les rayons doivent être positifs.' };
+    }
+    if (next.workRadiusMeters >= next.approachRadiusMeters) {
+      return { success: false, error: 'Le rayon « en cours » doit être plus petit que le rayon « en approche ».' };
+    }
+    gpsEngine.setThresholds(update);
+    setDetectionRadiiState(next);
+    detectionRadiiStorageRef.current
+      ?.save({ approachRadiusMeters: next.approachRadiusMeters, workRadiusMeters: next.workRadiusMeters })
+      .catch(() => {
+        // Best-effort persistence — a save failure shouldn't undo the live
+        // change already applied to the running GPS Engine this session.
+      });
+    return { success: true };
+  }
+
   // Sprint 017 (partie 2/N) — "Actualiser" button on NoMissionScreen.tsx
   // (docs/11 "Aucune mission"). Re-runs the same assignment lookup the
   // mount effect does (`fetchAssignedMission` if authenticated, else keep
@@ -686,7 +746,7 @@ export function MissionProvider({
         missionId: mission?.id ?? null,
         states: getDevStates(),
         events: getDevEvents(),
-        thresholds: DEFAULT_GPS_THRESHOLDS,
+        thresholds: detectionRadii,
         syncQueue,
         transitions,
       },
@@ -697,7 +757,10 @@ export function MissionProvider({
 
   const dev: DevTools = {
     gps: devGps,
-    thresholds: DEFAULT_GPS_THRESHOLDS,
+    // Sprint "Réglages du rayon de détection" — reflects the GPS Engine's
+    // real active thresholds (React-state mirror, see `detectionRadii`
+    // above), not always the hardcoded defaults now that they can change.
+    thresholds: detectionRadii,
     getStates: getDevStates,
     getEvents: getDevEvents,
     getSyncQueue: getDevSyncQueue,
@@ -719,6 +782,8 @@ export function MissionProvider({
     session,
     voiceEnabled,
     setVoiceEnabled,
+    detectionRadii,
+    setDetectionRadii: setDetectionRadiiCommand,
     reportProblem,
     resolveProblem,
     skipItem,
