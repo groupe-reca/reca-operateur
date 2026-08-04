@@ -717,7 +717,8 @@
 
 ## Suivi / limitations déclarées
 
-- [x] **Icône/splash officiels** (branche `sprint-app-icon-splash`, 2026-08-04) — résolu.
+- [x] **Icône/splash officiels** (branche `sprint-app-icon-splash`, 2026-08-04, PR :
+  https://github.com/groupe-reca/reca-operateur/pull/10) — résolu.
   `assets/icon.png`/`android-icon-{foreground,background,monochrome}.png`/`favicon.png`/
   `splash-icon.png` étaient tous les placeholders par défaut du template Expo (chevron bleu « A »,
   cercles concentriques), jamais remplacés depuis le Sprint 001. Régénérés depuis le flocon de
