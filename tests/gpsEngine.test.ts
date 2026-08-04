@@ -224,6 +224,44 @@ describe('GpsEngine — accuracy filtering, heading stabilisation, GPS loss', ()
   });
 });
 
+describe('GpsEngine — setThresholds/getThresholds (Sprint "Réglages du rayon de détection")', () => {
+  it('getThresholds returns the defaults merged with the constructor override', async () => {
+    const { db, clock } = await setup([]);
+    const stateMachine = createStateMachine(db, clock);
+    const engine = createGpsEngine({ stateMachine, clock, thresholds: { approachRadiusMeters: 500 } });
+    expect(engine.getThresholds().approachRadiusMeters).toBe(500);
+    expect(engine.getThresholds().workRadiusMeters).toBe(30); // untouched default
+  });
+
+  it('setThresholds changes a shrunk approach radius so a position outside the new radius no longer qualifies', async () => {
+    const { itemRepo, engine, clock } = await setup([item({ id: 'a', ordre: 1, status: 'EN_ROUTE' })]);
+    engine.setActiveResidence({ missionItemId: 'a', coordinate: BASE, detectionRadiusMeters: null });
+
+    const at200m = offsetNorth(BASE, 200); // inside the default 250m approach radius
+    engine.setThresholds({ approachRadiusMeters: 100 }); // now outside the new, shrunk radius
+
+    await engine.updatePosition({ ...at200m, accuracyMeters: 5, headingDegrees: null, speedMetersPerSecond: null, timestamp: clock.now() });
+    clock.set(new Date(clock.now().getTime() + 6000));
+    await engine.updatePosition({ ...at200m, accuracyMeters: 5, headingDegrees: null, speedMetersPerSecond: null, timestamp: clock.now() });
+
+    expect((await itemRepo.getById('a'))?.status).toBe('EN_ROUTE'); // never enters APPROACHING
+    expect(engine.getThresholds().approachRadiusMeters).toBe(100);
+  });
+
+  it('setThresholds does not reset an already-armed pending validation for an unrelated threshold', async () => {
+    const { itemRepo, engine, clock } = await setup([item({ id: 'a', ordre: 1, status: 'EN_ROUTE' })]);
+    engine.setActiveResidence({ missionItemId: 'a', coordinate: BASE, detectionRadiusMeters: null });
+
+    const near = offsetNorth(BASE, 100);
+    await engine.updatePosition({ ...near, accuracyMeters: 5, headingDegrees: null, speedMetersPerSecond: null, timestamp: clock.now() });
+    engine.setThresholds({ workRadiusMeters: 20 }); // unrelated to the pending ENTER_APPROACH candidate
+
+    clock.set(new Date(clock.now().getTime() + 6000));
+    await engine.updatePosition({ ...near, accuracyMeters: 5, headingDegrees: null, speedMetersPerSecond: null, timestamp: clock.now() });
+    expect((await itemRepo.getById('a'))?.status).toBe('APPROACHING');
+  });
+});
+
 describe('GpsSimulator — drives the same engine as production (docs/09)', () => {
   it('reproduces the EN_ROUTE → APPROACHING flow through the simulator API', async () => {
     const { itemRepo, engine, clock } = await setup([item({ id: 'a', ordre: 1, status: 'EN_ROUTE' })]);

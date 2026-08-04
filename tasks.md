@@ -544,6 +544,28 @@
     `LocationProvider` n'accorde jamais la permission). Nécessite une vraie décision produit
     (suspendre le capteur réel pendant la simulation ? interrupteur explicite dans `DevScreen` ?)
     — non corrigé, voir détail dans `memory.md`.
+- [x] **Réglages du rayon de détection GPS** (branche `sprint-detection-radii-settings`,
+  2026-08-04, PR : https://github.com/groupe-reca/reca-operateur/pull/7). Demande explicite du propriétaire : rendre le rayon « en approche » et le rayon
+  « en cours » réglables depuis Paramètres (jusqu'ici figés dans `DEFAULT_GPS_THRESHOLDS`).
+  Clarifié au passage : aucune règle de vitesse minimum au départ n'existe (ni code, ni `docs/04`)
+  — confirmé au propriétaire, laissé hors scope plutôt qu'inventé. **GPS Engine**
+  (`src/engines/gps/gpsEngine.ts`) : `thresholds` devient mutable, nouvelles méthodes
+  `getThresholds()`/`setThresholds(update)` sur l'objet retourné — aucun changement de
+  comportement pour les seuils déjà en vigueur. **Persistance** (nouveau
+  `src/integrations/settings/detectionRadiiStorage.ts`, mirror `expoSpeaker.ts` — point de contact
+  unique `@react-native-async-storage/async-storage`, déjà une dépendance) : `load()`/`save()`,
+  clé `@reca-operateur/detectionRadii`, échec de lecture → objet vide, jamais un crash.
+  **`MissionContext`** : charge les rayons persistés avant de créer le GPS Engine ; nouveau
+  `detectionRadii` (état React, miroir de `gpsEngine.getThresholds()`) + `setDetectionRadii(update)`
+  qui valide (rayons positifs, rayon « en cours » < rayon « en approche » — contrainte physique du
+  graphe EN_ROUTE→APPROCHE→EN_COURS, pas une règle inventée), applique au moteur, persiste ;
+  `dev.thresholds`/`exportLogs` (Sprint 019) lisent désormais les seuils réellement actifs au lieu
+  de la constante figée. `detectionRadiiStorageOverride` injectable (tests). **`SettingsScreen`** :
+  nouvelle section « Détection GPS », 2 champs numériques, erreur inline si invalide, confirmation
+  « Enregistré » sinon. Vérifié : `tsc`/`eslint`/`jest` verts (181/181, 20 suites, dont 3 nouveaux
+  tests `gpsEngine.test.ts` + 4 nouveaux tests d'intégration `missionContext.test.tsx` + 3 nouveaux
+  `settingsScreen.test.tsx`). **Non vérifié sur device** : aucune dépendance native ajoutée, mais
+  pas testé physiquement sur l'appareil cette passe.
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 
 ## À vérifier

@@ -7,6 +7,7 @@ import type { MissionItem, SyncOperation } from '@/domain/entities';
 import { MissionProvider, useMissionContext } from '@/context/MissionContext';
 import type { LocationProvider } from '@/integrations/location/expoLocationProvider';
 import type { NetworkSensor } from '@/integrations/network/expoNetInfoProvider';
+import type { DetectionRadiiOverride, DetectionRadiiStorage } from '@/integrations/settings/detectionRadiiStorage';
 import { createMissionItemRepository } from '@/persistence/repositories/missionItemRepository';
 
 import { createFakeDb } from './testFakeDb';
@@ -78,7 +79,25 @@ function createControllableLocationProvider() {
   };
 }
 
-function renderMissionContext() {
+// In-memory stand-in — never touches the real AsyncStorage native module.
+function createFakeDetectionRadiiStorage(seed: DetectionRadiiOverride = {}): DetectionRadiiStorage & {
+  saved: DetectionRadiiOverride[];
+} {
+  let current: DetectionRadiiOverride = seed;
+  const saved: DetectionRadiiOverride[] = [];
+  return {
+    saved,
+    async load() {
+      return current;
+    },
+    async save(value) {
+      current = value;
+      saved.push(value);
+    },
+  };
+}
+
+function renderMissionContext(detectionRadiiStorage?: DetectionRadiiStorage) {
   const db = createFakeDb();
   const transport = createFakeTransport();
   return {
@@ -92,6 +111,7 @@ function renderMissionContext() {
           speakerOverride={() => createFakeSpeaker()}
           locationProviderOverride={() => createFakeLocationProvider()}
           networkSensorOverride={() => createFakeNetworkSensor()}
+          detectionRadiiStorageOverride={() => detectionRadiiStorage ?? createFakeDetectionRadiiStorage()}
         >
           {children}
         </MissionProvider>
@@ -286,6 +306,7 @@ describe('MissionContext — real engines wired over a fake DB', () => {
           speakerOverride={() => createFakeSpeaker()}
           locationProviderOverride={() => provider}
           networkSensorOverride={() => createFakeNetworkSensor()}
+          detectionRadiiStorageOverride={() => createFakeDetectionRadiiStorage()}
         >
           {children}
         </MissionProvider>
@@ -347,6 +368,7 @@ describe('MissionContext — real engines wired over a fake DB', () => {
           speakerOverride={() => createFakeSpeaker()}
           locationProviderOverride={() => deniedProvider}
           networkSensorOverride={() => createFakeNetworkSensor()}
+          detectionRadiiStorageOverride={() => createFakeDetectionRadiiStorage()}
         >
           {children}
         </MissionProvider>
@@ -465,5 +487,75 @@ describe('MissionContext — real engines wired over a fake DB', () => {
       result.current.setVoiceEnabled(true);
     });
     await waitFor(() => expect(result.current.voiceEnabled).toBe(true));
+  });
+
+  it('detectionRadii defaults to the GPS Engine defaults, and setDetectionRadii applies + persists a valid change', async () => {
+    const storage = createFakeDetectionRadiiStorage();
+    const { result } = renderMissionContext(storage);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.detectionRadii.approachRadiusMeters).toBe(250);
+    expect(result.current.detectionRadii.workRadiusMeters).toBe(30);
+
+    let outcome: { success: boolean; error?: string } | undefined;
+    act(() => {
+      outcome = result.current.setDetectionRadii({ approachRadiusMeters: 300, workRadiusMeters: 40 });
+    });
+
+    expect(outcome?.success).toBe(true);
+    await waitFor(() => expect(result.current.detectionRadii.approachRadiusMeters).toBe(300));
+    expect(result.current.detectionRadii.workRadiusMeters).toBe(40);
+    expect(storage.saved).toContainEqual({ approachRadiusMeters: 300, workRadiusMeters: 40 });
+  });
+
+  it('setDetectionRadii refuses a work radius greater than or equal to the approach radius, without changing anything', async () => {
+    const { result } = renderMissionContext();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const before = result.current.detectionRadii;
+
+    let outcome: { success: boolean; error?: string } | undefined;
+    act(() => {
+      outcome = result.current.setDetectionRadii({ workRadiusMeters: 250 }); // >= the default 250m approach radius
+    });
+
+    expect(outcome?.success).toBe(false);
+    expect(outcome?.error).toBeTruthy();
+    expect(result.current.detectionRadii).toEqual(before);
+  });
+
+  it('setDetectionRadii refuses a non-positive radius', async () => {
+    const { result } = renderMissionContext();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let outcome: { success: boolean; error?: string } | undefined;
+    act(() => {
+      outcome = result.current.setDetectionRadii({ approachRadiusMeters: 0 });
+    });
+
+    expect(outcome?.success).toBe(false);
+  });
+
+  it('a persisted detection radius from a previous session applies from the very first fix', async () => {
+    const storage = createFakeDetectionRadiiStorage({ approachRadiusMeters: 100 });
+    const { result, db } = renderMissionContext(storage);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.detectionRadii.approachRadiusMeters).toBe(100);
+
+    const activeId = result.current.activeMissionItem?.id as string;
+    const coordinate = { latitude: 45.78, longitude: -73.95 };
+    const itemRepo = createMissionItemRepository(db);
+    const activeItem = await itemRepo.getById(activeId);
+    await itemRepo.upsert({ ...(activeItem as MissionItem), ...coordinate });
+
+    // 150m away — inside the default 250m approach radius, but outside the
+    // persisted 100m override that should already be active.
+    await act(async () => {
+      await result.current.dev.gps.moveTo(coordinate);
+    });
+    await act(async () => {
+      await result.current.dev.gps.moveTo({ latitude: coordinate.latitude + 150 / 111320, longitude: coordinate.longitude });
+      await result.current.dev.gps.advanceTime(5);
+    });
+
+    expect(result.current.allMissionItems.find((i) => i.id === activeId)?.status).toBe('EN_ROUTE');
   });
 });

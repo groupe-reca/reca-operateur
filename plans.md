@@ -6,7 +6,68 @@
 
 ## Plan actif
 
-*(aucun — voir `tasks.md` pour le prochain sprint à choisir)*
+_Aucun plan actif pour le moment._
+
+## Archivé
+
+### ✅ Réglages du rayon de détection GPS (branche `sprint-detection-radii-settings`, 2026-08-03)
+
+**Objectif** : demande explicite du propriétaire — rendre `approachRadiusMeters` (« Rayon en
+approche ») et `workRadiusMeters` (« Rayon en cours ») réglables depuis Paramètres, plutôt que
+figés dans `DEFAULT_GPS_THRESHOLDS`. Persistés (survivent un redémarrage), appliqués en direct au
+GPS Engine déjà en cours d'exécution. Clarifié au passage : **aucune règle de vitesse minimum au
+départ n'existe** — `speedMetersPerSecond` est capturé dans chaque fix mais jamais utilisé, `docs/04`
+ne documente aucune règle de ce type — reste hors scope (rien à ajouter sans l'inventer).
+
+**Constat technique avant de coder** : `thresholds` est un `const` figé à la création du GPS
+Engine (`createGpsEngine`) — aucun moyen de le changer après coup. Nécessite une vraie extension du
+moteur, pas juste un nouveau champ d'écran.
+
+**Design** :
+1. **`src/engines/gps/gpsEngine.ts`** : `thresholds` devient mutable (`let`). Nouvelles méthodes sur
+   l'objet retourné : `getThresholds(): GpsThresholds` et `setThresholds(update:
+   Partial<GpsThresholds>): void` (fusionne dans les seuils courants). Aucun changement de
+   comportement pour les seuils déjà utilisés — juste une porte pour les modifier après coup.
+2. **`src/persistence/detectionRadiiStorage.ts`** (nouveau, mirror `expoSpeaker.ts`/
+   `mapboxClient.ts` — point de contact unique) : `createAsyncStorageDetectionRadii()` via
+   `@react-native-async-storage/async-storage` (déjà une dépendance, déjà utilisée pour la session
+   Supabase) — `load()`/`save({approachRadiusMeters?, workRadiusMeters?})`, clé
+   `@reca-operateur/detectionRadii`. Échec de lecture/parsing → objet vide (jamais un crash).
+3. **`MissionContext.tsx`** : au montage, charge les rayons persistés avant de créer le GPS Engine
+   (`thresholds: persisted` passé à `createGpsEngine`). Nouveau
+   `detectionRadii: {approachRadiusMeters, workRadiusMeters}` (état React, miroir de
+   `gpsEngine.getThresholds()` pour que l'UI se re-rende) + `setDetectionRadii(update)` : valide
+   (nombres positifs, rayon « en cours » < rayon « en approche » — contrainte physique implicite du
+   graphe EN_ROUTE→APPROCHE→EN_COURS, pas une règle métier inventée), appelle
+   `gpsEngine.setThresholds()`, persiste, met à jour l'état React. `dev.thresholds` (Sprint 019)
+   lit désormais `gpsEngine.getThresholds()` au lieu de `DEFAULT_GPS_THRESHOLDS` figé — reflète les
+   vrais seuils actifs, y compris après un changement utilisateur.
+   `detectionRadiiStorageOverride` injectable (tests — jamais de vrai AsyncStorage touché, même
+   règle que chaque capteur/stockage précédent).
+4. **`SettingsScreen.tsx`** : nouvelle section « Détection GPS » — 2 champs numériques (Rayon en
+   approche / Rayon en cours, mètres), erreur inline si rayon en cours ≥ rayon en approche,
+   appliqué via `ctx.setDetectionRadii()`.
+
+**Hors scope, explicitement différé** : règle de vitesse minimum au départ (aucun mécanisme
+documenté, discuté avec le propriétaire — pas ajoutée) ; `completionRadiusMeters`/autres seuils
+(non demandés) ; validation/plage de valeurs au-delà de « positif » et « cohérent entre les deux »
+(aucune borne documentée).
+
+**Vérification** : tests moteur (`gpsEngine.test.ts` — `setThresholds`/`getThresholds`, un nouveau
+seuil affecte bien la zone suivante) ; tests contexte (`missionContext.test.tsx` —
+`setDetectionRadii` met à jour `dev.thresholds`, persiste via le stockage injecté) ; tests écran
+(`settingsScreen.test.tsx`) ; `tsc`/`eslint`/`jest` verts ; `expo-doctor`.
+
+**Réalisé conformément au plan**, avec un seul écart : le module de stockage vit dans
+`src/integrations/settings/detectionRadiiStorage.ts` (pas `src/persistence/`) — `src/persistence/`
+est réservé au modèle mission SQLite local-first (`docs/07`/`docs/08`), ce réglage est une
+préférence d'appareil, pas une donnée de mission. `SettingsScreen.tsx` : section « Détection GPS »
+avec 2 `TextInput` numériques (`testID="approach-radius-input"`/`"work-radius-input"`), état local
+texte (pas de sync live sur `ctx.detectionRadii` pour ne pas écraser une saisie en cours), bouton
+« Enregistrer » qui parse + appelle `ctx.setDetectionRadii()`, erreur inline (`testID="radii-error"`)
+ou confirmation (`testID="radii-saved"`). Tests : 45 tests verts sur les 4 fichiers touchés
+(`gpsEngine`/`missionContext`/`devScreen`/`settingsScreen`), 181/181 sur la suite complète.
+`tsc --noEmit` et `eslint .` propres.
 
 ## Archivé
 

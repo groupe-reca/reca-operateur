@@ -126,14 +126,19 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     authentifié). « Ne doit pas ressembler à un tableau de bord administratif » — pas de
     liste/tableau, juste ce que `docs/11` demande.
   - `SettingsScreen.tsx` (Sprint « Migration SQLite versionnée + écran Paramètres », 2026-08-03,
-    testé `tests/settingsScreen.test.tsx`) — écran « Paramètres » (`docs/11` Écrans finaux) : seuls
-    les 4 items avec un vrai mécanisme sont construits — Voix (`ctx.voiceEnabled`/
-    `setVoiceEnabled`, `Switch`), Compte (email + Déconnexion via `useAuth()`), Thème (affichage
-    statique « Sombre »), Version (`package.json`). Volume/carte/préférences d'affichage/
-    confidentialité délibérément absents (aucun mécanisme réel, voir `memory.md`). Item « Mode
-    développement » (ouvre `DevScreen`) affiché seulement si `onOpenDevMode` est fourni — `__DEV__`
-    côté appelant. **Point d'entrée réel du hamburger** (`AppHeader`/`MissionScreen.onMenu`) depuis
-    cette passe — remplace le branchement direct vers `DevScreen` du Sprint 019.
+    étendu Sprint « Réglages du rayon de détection » 2026-08-04, testé
+    `tests/settingsScreen.test.tsx`) — écran « Paramètres » (`docs/11` Écrans finaux) : seuls les
+    items avec un vrai mécanisme sont construits — Voix (`ctx.voiceEnabled`/`setVoiceEnabled`,
+    `Switch`), Compte (email + Déconnexion via `useAuth()`), **Détection GPS** (2 `TextInput`
+    numériques « Rayon en approche »/« Rayon en cours », état texte local appliqué seulement au
+    bouton « Enregistrer » — pas de sync live sur `ctx.detectionRadii` pour ne pas écraser une
+    saisie en cours —, erreur inline `testID="radii-error"` ou confirmation `testID="radii-saved"`,
+    appelle `ctx.setDetectionRadii()`), Thème (affichage statique « Sombre »), Version
+    (`package.json`). Volume/carte/préférences d'affichage/confidentialité délibérément absents
+    (aucun mécanisme réel, voir `memory.md`). Item « Mode développement » (ouvre `DevScreen`)
+    affiché seulement si `onOpenDevMode` est fourni — `__DEV__` côté appelant. **Point d'entrée réel
+    du hamburger** (`AppHeader`/`MissionScreen.onMenu`) depuis le Sprint Paramètres — remplace le
+    branchement direct vers `DevScreen` du Sprint 019.
   - `MissionActiveScreen.tsx` (Sprint « Mission active », 2026-08-03) — écran « Mission active »
     (`docs/11` Écrans finaux) : résumé mission (secteur/date), équipement (`Mission.equipment`),
     nombre de résidences, section « Préparation hors ligne » (état sync/réseau réels, pas un
@@ -228,12 +233,14 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     pur/testé), `gpsEngine.ts` (`createGpsEngine({ stateMachine, clock, thresholds? })` :
     `setActiveResidence`/`setNextResidence`/`updatePosition`/`checkTimeout`/`on`/`getEvents` —
     valide chaque franchissement de rayon par délai avant d'appeler les commandes du State
-    Machine), `simulator.ts` (`createGpsSimulator` — Travail explicite de cette phase, réutilise
-    le même moteur que la production), `index.ts` (barrel). **Câblé dans `MissionContext`**
-    depuis Sprint 017 partie 1/N (2026-08-02) : `setActiveResidence` appelé à chaque changement
-    de résidence active, mais **pas de capteur `expo-location` réel** — le moteur ne reçoit jamais
-    de position, donc ne peut jamais déclencher de transition (capteur explicitement différé,
-    voir `plans.md`).
+    Machine ; `thresholds` mutable depuis le Sprint « Réglages du rayon de détection »
+    (2026-08-04) — `getThresholds()`/`setThresholds(update)` permettent de changer les rayons en
+    direct sans recréer le moteur, donc sans perdre l'état de mission en cours), `simulator.ts`
+    (`createGpsSimulator` — Travail explicite de cette phase, réutilise le même moteur que la
+    production), `index.ts` (barrel). **Câblé dans `MissionContext`** depuis Sprint 017 partie
+    1/N (2026-08-02) : `setActiveResidence` appelé à chaque changement de résidence active,
+    capteur `expo-location` réel câblé depuis Sprint 017 partie 2/N. Rayons persistés/réglables
+    depuis Paramètres (voir `src/integrations/settings/detectionRadiiStorage.ts` ci-dessous).
   - `sync/` (Sprint 013-014) — moteur pur de synchronisation (`docs/07`), aucun React, `Db`/
     `Clock`/`transport`/`network` injectés : `backoff.ts` (`computeBackoffDelaySeconds`, testé),
     `priority.ts` (`selectBatch` — ordre intra-mission jamais cassé), `syncEngine.ts`
@@ -299,12 +306,20 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     — relance `fetchAssignedMission` sans redémarrer capteurs/session, appelée par
     `NoMissionScreen`) + **`voiceEnabled`/`setVoiceEnabled`** (Sprint « Paramètres » — câble
     `voiceEngine.setEnabled`/`isEnabled` du Sprint 016, jamais appelé jusqu'ici, appelé par
-    `SettingsScreen`) + **`dev`** (Sprint 019, `DevTools` — `gps`
+    `SettingsScreen`) + **`detectionRadii`/`setDetectionRadii`** (Sprint « Réglages du rayon de
+    détection », 2026-08-04 — `detectionRadii` : état React miroir de `gpsEngine.getThresholds()`,
+    initialisé depuis `detectionRadiiStorage.load()` avant même la création du GPS Engine
+    (`thresholds: persistedRadii` passé à `createGpsEngine`) ; `setDetectionRadii(update)` valide
+    (rayons positifs, rayon « en cours » < rayon « en approche »), appelle `gpsEngine.
+    setThresholds()`, persiste via `detectionRadiiStorage.save()`, met à jour l'état React —
+    `detectionRadiiStorageOverride` injectable) + **`dev`** (Sprint 019, `DevTools` — `gps`
     enveloppe `createGpsSimulator` autour de `gpsEngineRef` avec rechargement `afterMutation`
-    intégré ; `thresholds` = `DEFAULT_GPS_THRESHOLDS` telle quelle, jamais overridée ; `getStates`/
-    `getEvents` agrègent ce que les 4 moteurs exposent déjà ; `getSyncQueue`/`getTransitions`
-    lisent les repositories directement ; `setNetworkOverride` pilote `networkOverrideRef`, garde
-    priorité sur le signal réseau réel ; `exportLogs` assemble tout en JSON pour `Share.share()`).
+    intégré ; `thresholds` lit désormais `detectionRadii` (état React live, plus la constante
+    figée `DEFAULT_GPS_THRESHOLDS`) — reflète les vrais seuils actifs, y compris après un
+    changement utilisateur ; `getStates`/`getEvents` agrègent ce que les 4 moteurs exposent déjà ;
+    `getSyncQueue`/`getTransitions` lisent les repositories directement ; `setNetworkOverride`
+    pilote `networkOverrideRef`, garde priorité sur le signal réseau réel ; `exportLogs` assemble
+    tout en JSON pour `Share.share()`, `thresholds` y reflète aussi `detectionRadii`).
     `closeMission` : `requestMissionComplete`, puis — contrairement aux autres commandes — recharge
     aussi `mission` via `missionRepo.getById`, pas seulement les items, sinon l'écran ne verrait
     jamais son propre succès ; retourne le `TransitionResult` brut. **Réseau** (Sprint 017 partie
@@ -375,6 +390,13 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     `@react-native-community/netinfo` directement. `createNetInfoSensor()` : combine
     `isConnected`/`isInternetReachable` (`docs/08` « ne doit pas se fier uniquement à l'icône
     réseau ») — signal *appareil*, pas d'accessibilité serveur réelle.
+  - `settings/detectionRadiiStorage.ts` (Sprint « Réglages du rayon de détection », 2026-08-04,
+    mirror `expoSpeaker.ts`) — point de contact unique pour persister le réglage opérateur des
+    rayons de détection GPS via `@react-native-async-storage/async-storage`.
+    `createAsyncStorageDetectionRadii()` : `load()`/`save({approachRadiusMeters?,
+    workRadiusMeters?})`, clé `@reca-operateur/detectionRadii`, échec de lecture/parsing → objet
+    vide (jamais un crash). Volontairement hors `src/persistence/` : préférence d'appareil, pas
+    donnée de mission SQLite local-first.
 - `src/services/` — orchestration (Authentication, Mission Loader…). Vide.
 - `src/hooks/` — hooks React minces (adaptateurs de moteurs/contexte). Vide.
 - `src/types/`

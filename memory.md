@@ -1359,6 +1359,45 @@ visible sur l'écran de mission réel après fermeture de `DevScreen` tant qu'au
 n'écrase `gpsState.position` — confirme au passage que `gpsState`/`dev.gps` partagent bien un seul
 état de vérité (comportement voulu), juste avec cet angle mort de compétition non résolu.
 
+## Réglages du rayon de détection GPS (2026-08-04)
+
+Demande explicite du propriétaire (« Rayon en approche / Rayon en cours réglables + une règle de
+vitesse minimum au départ ? ») après avoir vérifié que `DevScreen` n'affichait les seuils GPS qu'en
+lecture seule (`DEFAULT_GPS_THRESHOLDS`, jamais modifiables).
+
+- **Règle de vitesse minimum au départ : confirmée absente, laissée hors scope.** Vérification
+  faite avant de répondre : `speedMetersPerSecond` est capturé dans chaque `GpsPosition`
+  (`src/engines/gps/types.ts`) mais **jamais lu** par `gpsEngine.ts` ni aucune commande du State
+  Machine ; `docs/04` ne documente aucune règle de ce type. Ne pas en inventer une sans validation
+  explicite — même principe que chaque « portée hors scope » précédente de ce repo.
+- **`GpsEngine.thresholds` devient mutable** (`let`, plus `const`) — nouvelles méthodes
+  `getThresholds()`/`setThresholds(update)` sur l'objet retourné par `createGpsEngine`. Nécessaire
+  car le moteur porte de l'état en vol (résidence active, phase, candidature de validation en
+  attente) — recréer le moteur pour changer un seuil aurait perdu tout ça. `setThresholds` ne
+  réinitialise jamais une candidature en attente pour un seuil non concerné (testé).
+- **Nouveau module `src/integrations/settings/detectionRadiiStorage.ts`**, volontairement **hors**
+  `src/persistence/` : ce dossier est réservé au modèle mission SQLite local-first (`docs/07`/
+  `docs/08`), un réglage opérateur est une préférence d'appareil, pas une donnée de mission — même
+  distinction que `voiceEnabled` (Sprint Paramètres) qui, lui, vit directement dans
+  `MissionContext` sans module de stockage dédié (différence : ici il fallait aussi injecter la
+  valeur persistée **dans le constructeur du GPS Engine**, pas juste après coup).
+- **Validation dans `setDetectionRadii`** : rayons positifs + rayon « en cours » strictement
+  inférieur au rayon « en approche ». Ce n'est **pas** une règle métier inventée — c'est une
+  contrainte physique implicite du graphe de transitions EN_ROUTE→APPROCHE→EN_COURS (`docs/09`) :
+  un rayon « en cours » ≥ au rayon « en approche » rendrait la phase APPROCHE inatteignable pour
+  certaines résidences. Aucune autre borne (valeur max, pas minimum en mètres absolus) n'est
+  imposée — rien de ce genre n'est documenté.
+- **`dev.thresholds`/`exportLogs` (Sprint 019) lisent désormais l'état React live** `detectionRadii`
+  au lieu de la constante figée `DEFAULT_GPS_THRESHOLDS` — sans ce changement, `DevScreen` aurait
+  continué d'afficher les seuils par défaut même après un changement réel côté opérateur.
+- **`SettingsScreen`** : les 2 champs texte gardent un **état local non synchronisé en direct** sur
+  `ctx.detectionRadii` (seulement initialisé une fois au montage) — un `useEffect` de
+  synchronisation aurait écrasé la saisie de l'opérateur à chaque re-rendu du contexte. Appliqué
+  seulement au bouton « Enregistrer ».
+- **Non vérifié sur device cette passe** — aucune dépendance native ajoutée (AsyncStorage déjà
+  présent depuis le câblage Supabase), donc aucun nouveau build natif requis, mais pas de test
+  physique effectué.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,

@@ -51,6 +51,8 @@ function makeCtx(overrides: Partial<MissionContextValue> = {}): MissionContextVa
     session: null,
     voiceEnabled: true,
     setVoiceEnabled: jest.fn(),
+    detectionRadii: DEFAULT_GPS_THRESHOLDS,
+    setDetectionRadii: jest.fn(),
     reportProblem: jest.fn(),
     resolveProblem: jest.fn(),
     skipItem: jest.fn(),
