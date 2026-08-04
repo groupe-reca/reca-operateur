@@ -1188,7 +1188,7 @@
   actuellement, donc rien ne changerait entre deux lectures dans une même session ; à revisiter si
   un futur producteur d'alertes apparaît.
 
-## Premier test réel de bout en bout sur device (2026-08-03) — 2 vrais bugs trouvés
+## Premier test réel de bout en bout sur device (2026-08-03) — 3 vrais bugs trouvés
 
 Premier test complet capteurs réels + Mission active sur le TECNO KL4 du propriétaire, après merge
 des PR #4/#5. Build `expo prebuild` + `gradlew installDebug` (nouveaux modules
@@ -1234,6 +1234,48 @@ avec la résidence 148 Rue Scott en EN ROUTE. Nouveau test de régression :
 `tests/missionContext.test.tsx` (« startMission activates the first WAITING item… ») reproduit la
 condition en réinitialisant artificiellement l'item pré-activé du seed à `WAITING` avant d'appeler
 `startMission()`.
+
+**Bug 3 — position du tracteur jamais reliée au vrai GPS, corrigé en 2 temps** : signalé par le
+propriétaire en regardant l'écran en direct (« la position du tracteur n'est pas encore connectée
+au GPS » puis, après le premier correctif, « le tracteur n'est pas au bon endroit »). **Deux causes
+racines distinctes, pas une seule** :
+1. `deriveMissionScreenState.ts` calculait toujours `map.position` à partir des coordonnées de la
+   résidence elle-même (`highlighted.latitude/longitude`), jamais d'un vrai fix — commentaire resté
+   de Sprint 017 partie 1/N (« sensor deferred »), jamais mis à jour quand le vrai capteur a été
+   câblé en partie 2/N. Le moteur GPS recevait déjà les vrais fix (`gpsEngine.updatePosition(fix)`,
+   utilisés pour la logique de zones/transitions) mais **ne les exposait jamais** pour affichage —
+   aucune méthode `getLastPosition()`, seul un timestamp interne (`lastPositionAt`) était gardé.
+   **Corrigé** : `MissionContext.GpsState` porte désormais `position: {latitude, longitude,
+   headingDegrees} | null` quand `available: true` ; mis à jour à chaque fix réel (capteur) ou
+   simulé (`dev.gps.moveTo`/`recoverSignal` — même affichage, un seul code de vérité) ;
+   `deriveMissionScreenState.ts` utilise cette position réelle quand présente. **Respect de
+   l'invariant CLAUDE.md « c'est la carte qui tourne… cap validé après temporisation, jamais le cap
+   GPS brut »** : `headingDegrees` vient exclusivement de l'événement `HeadingChanged` du GPS
+   Engine (déjà validé par sa propre temporisation 3s, `docs/04`), jamais du cap brut d'un fix —
+   `headingRef` mis à jour via `gpsEngine.on()`.
+2. **Ce premier correctif seul ne suffisait pas** — vérifié en confrontant un `console.log` du fix
+   brut reçu (coordonnées réelles bien différentes de la résidence) à une capture d'écran prise au
+   même moment : les rues affichées autour du tracteur n'avaient **pas bougé**. Root cause réelle :
+   `<Mapbox.Camera>` (`@rnmapbox/maps`, `src/components/map/MissionMapView.tsx`) n'applique ses
+   props `centerCoordinate`/`heading` **qu'au tout premier montage** — la bibliothèque ne
+   ré-anime jamais la caméra automatiquement quand ces props changent sur un rendu suivant, seul un
+   appel impératif (`cameraRef.current.setCamera(...)`) le fait, jusqu'ici uniquement câblé sur le
+   bouton manuel « Recentrer ». **Corrigé** : `useEffect` ajouté qui rappelle `setCamera(...)` à
+   chaque changement de `position`/`zoomLevel`/`padding` — la caméra suit désormais réellement le
+   tracteur en continu, cohérent avec `docs/02` « c'est la carte qui tourne » (comportement continu,
+   pas seulement manuel). Vérifié en direct sur l'appareil (nouveau `console.log` de diagnostic
+   retiré après vérification) + 2 nouveaux tests (`deriveMissionScreenState.test.ts`,
+   `missionContext.test.tsx`).
+
+**Bug 4 — distance résidence toujours « — », corrigé** : signalé dans la même remarque du
+propriétaire (« la carte résidence active devrait afficher une distance, par exemple 45m »).
+`residenceDistanceLabel` était un placeholder figé depuis le Sprint 017 partie 1/N, jamais revisité.
+**Corrigé** : calcul réel via `haversineDistanceMeters` (déjà exporté par le GPS Engine, Sprint
+011-012) entre le fix live et la coordonnée de la résidence, formaté « 45 m » sous 1 km ou « 1,2 km »
+au-delà (même convention que `missionScreenMocks.ts`/`ComponentGalleryScreen.tsx`) — distance à vol
+d'oiseau, pas une distance routière (nécessiterait la Directions API, hors scope de ce correctif).
+`residenceEtaLabel` reste `—` : une vraie ETA a besoin d'une durée routée, pas juste d'une distance.
+Vérifié en direct (« À 294 m » affiché) + 3 nouveaux tests (`deriveMissionScreenState.test.ts`).
 
 ## Système de mémoire
 

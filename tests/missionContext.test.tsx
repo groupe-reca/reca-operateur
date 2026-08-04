@@ -293,7 +293,7 @@ describe('MissionContext — real engines wired over a fake DB', () => {
     });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.gpsState).toEqual({ available: true });
+    expect(result.current.gpsState).toEqual({ available: true, position: null });
 
     const activeId = result.current.activeMissionItem?.id as string;
     const coordinate = { latitude: 45.78, longitude: -73.95 };
@@ -324,6 +324,13 @@ describe('MissionContext — real engines wired over a fake DB', () => {
 
     await waitFor(() => {
       expect(result.current.allMissionItems.find((i) => i.id === activeId)?.status).toBe('APPROACHING');
+    });
+    // Bug found testing on a real device (2026-08-03): gpsState used to
+    // never carry the actual fix, so the map always drew the tractor at the
+    // residence's own coordinate regardless of the real sensor.
+    expect(result.current.gpsState).toEqual({
+      available: true,
+      position: { latitude: coordinate.latitude, longitude: coordinate.longitude, headingDegrees: 0 },
     });
   });
 

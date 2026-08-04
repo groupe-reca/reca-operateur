@@ -82,13 +82,17 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     état `closing`/`closed`/`closeError`/`starting`/`startError` local, appellent
     `ctx.closeMission()`/`ctx.startMission()`.
   - `deriveMissionScreenState.ts` (Sprint 017 partie 1/N, pur, testé
-    `tests/deriveMissionScreenState.test.ts`) — traduit `MissionContextValue` (mission/résidence
-    active/items/sync/offline) vers `MissionScreenState` sans toucher `MissionScreen`. Cherche un
-    item `PROBLEM` dans `allMissionItems` (exclu de `ACTIVE_ITEM_STATES`, donc jamais
-    `activeMissionItem`) séparément. Champs sans source de donnée réelle encore laissés en
-    placeholder honnête plutôt qu'inventés (`residenceDistanceLabel`/`residenceEtaLabel`/
-    `totalEtaLabel`/`alerts`/`tasks`) — `docs/10` « ne jamais masquer une erreur par une valeur
-    fictive ». `missionSeconds`/`timerSeconds` calculés une fois à la dérivation, pas un ticker.
+    `tests/deriveMissionScreenState.test.ts` ; corrigé 2026-08-03) — traduit `MissionContextValue`
+    (mission/résidence active/items/sync/offline/**gpsState**) vers `MissionScreenState` sans
+    toucher `MissionScreen`. Cherche un item `PROBLEM` dans `allMissionItems` (exclu de
+    `ACTIVE_ITEM_STATES`, donc jamais `activeMissionItem`) séparément. `map.position` = le vrai fix
+    GPS (`ctx.gpsState.position`) quand disponible — **bug réel trouvé/corrigé sur device** : ça
+    retombait toujours sur la coordonnée de la résidence, même capteur réel câblé (voir
+    `memory.md`) ; ne retombe sur la résidence que tant qu'aucun fix n'est encore arrivé. Champs
+    sans source de donnée réelle encore laissés en placeholder honnête plutôt qu'inventés
+    (`residenceDistanceLabel`/`residenceEtaLabel`/`totalEtaLabel`/`alerts`/`tasks`) — `docs/10`
+    « ne jamais masquer une erreur par une valeur fictive ». `missionSeconds`/`timerSeconds`
+    calculés une fois à la dérivation, pas un ticker.
   - `deriveEndOfMissionState.ts` (Sprint 018, pur, testé
     `tests/deriveEndOfMissionState.test.ts`) — `null` sauf si la mission est éligible à la
     fermeture : chargée, `status !== 'COMPLETED'`, aucun `MissionItem` `WAITING` ni actif
@@ -178,7 +182,10 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     seuls Carte/Annonce fonctionnels, voir `memory.md`).
   - `map/` — **carte réelle Mapbox** (Sprint 005-006, remplace `SimulatedMapBackground`
     supprimé) : `MissionMapView.tsx` (MapView + Camera + style `dark-v11`, expose `recenter()`
-    via ref), `TractorMarker.tsx` (overlay écran fixe, ancre HANDOFF 24 % du bas), `ResidenceMarkerLayer.tsx`
+    via ref ; **corrigé 2026-08-03** — `<Mapbox.Camera>` n'applique ses props que sur le premier
+    montage, un `useEffect` rappelle désormais `setCamera()` à chaque changement de `position`,
+    sinon la carte ne suivait jamais le tracteur automatiquement, voir `memory.md`),
+    `TractorMarker.tsx` (overlay écran fixe, ancre HANDOFF 24 % du bas), `ResidenceMarkerLayer.tsx`
     (5 `PointAnnotation`), `SuggestedRouteLayer.tsx` (`ShapeSource`+`LineLayer` 2 passes),
     `useSuggestedRoute.ts` (hook, repli ligne droite → upgrade Directions API). `ResidenceMapMarker.tsx`
     mis à niveau (couleur par **rang** 1-5 selon `docs/05`, pas juste actif/neutre).

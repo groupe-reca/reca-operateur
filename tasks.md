@@ -470,7 +470,7 @@
 - [x] **Premier test réel de bout en bout sur device** (TECNO KL4, 2026-08-03, après merge des
   PR #4/#5) — build/install exécutés **depuis ce VPS** (adb/JDK 17/Android SDK confirmés présents
   et un appareil connecté, contrairement à l'hypothèse par défaut de `CLAUDE.md` — voir
-  `memory.md`). **2 bugs réels trouvés** :
+  `memory.md`). **5 bugs réels trouvés** :
   - [ ] **Suivi ouvert, non résolu** — migration SQLite manquante : `sync_operations` (`CREATE
     TABLE IF NOT EXISTS`) n'ajoute jamais les colonnes du Sprint 013-014 sur un appareil ayant déjà
     une base locale antérieure (`table sync_operations has no column named mission_id`).
@@ -481,8 +481,27 @@
     item) : après « Démarrer la tournée » sur une vraie mission (tous les items `WAITING`),
     l'écran restait bloqué sur le repli générique. Câblé au montage + dans `startMission()`.
     Vérifié en direct sur l'appareil (carte Mapbox + résidence EN ROUTE affichées immédiatement
-    après démarrage) + nouveau test de régression `tests/missionContext.test.tsx`. `tsc`/`eslint`/
-    `jest` verts (158/158, 18 suites).
+    après démarrage) + nouveau test de régression `tests/missionContext.test.tsx`.
+  - [x] **Corrigé (2 causes)** — signalé par le propriétaire en regardant l'écran : la position du
+    tracteur n'était jamais reliée au vrai GPS, puis (après un premier correctif) « pas au bon
+    endroit ». (1) `deriveMissionScreenState.ts` calculait toujours `map.position` depuis les
+    coordonnées de la résidence (reste de Sprint 017 partie 1/N, jamais mis à jour quand le vrai
+    capteur a été câblé en partie 2/N) — le moteur GPS recevait bien les vrais fix mais ne les
+    exposait nulle part. `MissionContext.GpsState` porte maintenant `position: {latitude,
+    longitude, headingDegrees} | null`, `headingDegrees` exclusivement issu de l'événement
+    `HeadingChanged` validé (jamais le cap brut — invariant `CLAUDE.md`). (2) Insuffisant seul :
+    `<Mapbox.Camera>` (`@rnmapbox/maps`) n'applique ses props `centerCoordinate`/`heading` qu'au
+    premier montage, jamais automatiquement ensuite — seul le bouton manuel « Recentrer » appelait
+    `setCamera()`. Ajout d'un `useEffect` qui rappelle `setCamera()` à chaque changement de
+    position — la carte suit désormais réellement le tracteur en continu. Vérifié en direct
+    (`console.log` de diagnostic temporaire retiré après vérification).
+  - [x] **Corrigé** — même remarque du propriétaire : la carte résidence active devrait afficher
+    une distance réelle (ex. « 45 m »), pas toujours « — ». Calcul ajouté via
+    `haversineDistanceMeters` (déjà exporté par le GPS Engine) entre le fix live et la résidence,
+    formaté « 45 m » / « 1,2 km » (même convention que `missionScreenMocks.ts`) — distance à vol
+    d'oiseau, pas routière. `residenceEtaLabel` reste `—` (nécessiterait une durée routée, hors
+    scope). Vérifié en direct (« À 294 m » affiché).
+  Vérifié : `tsc`/`eslint`/`jest` verts (162/162, 18 suites).
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 
 ## À vérifier

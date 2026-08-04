@@ -1,6 +1,8 @@
 import type { Mission, MissionItem } from '@/domain/entities';
+import { haversineDistanceMeters } from '@/engines/gps';
 import type { SynchronizationState } from '@/engines/sync/types';
 import type { OfflineEngineState } from '@/engines/offline';
+import type { GpsState } from '@/context/MissionContext';
 
 import { deriveMissionScreenState } from '@/screens/deriveMissionScreenState';
 
@@ -51,6 +53,10 @@ const onlineState: OfflineEngineState = {
   lastOnlineAt: '2026-08-01T06:00:00.000Z',
 };
 
+// No fix wired for these tests — deriveMissionScreenState falls back to the
+// residence's own coordinate, exercised by the existing map assertions.
+const noGpsFix: GpsState = { available: false, reason: 'unavailable' };
+
 describe('deriveMissionScreenState', () => {
   it('returns null when there is no mission', () => {
     const result = deriveMissionScreenState(
@@ -61,6 +67,7 @@ describe('deriveMissionScreenState', () => {
         allMissionItems: [],
         synchronizationState: syncedState,
         offlineState: onlineState,
+        gpsState: noGpsFix,
       },
       now
     );
@@ -77,6 +84,7 @@ describe('deriveMissionScreenState', () => {
         allMissionItems: [waiting],
         synchronizationState: syncedState,
         offlineState: onlineState,
+        gpsState: noGpsFix,
       },
       now
     );
@@ -101,6 +109,7 @@ describe('deriveMissionScreenState', () => {
         allMissionItems: [active, next],
         synchronizationState: syncedState,
         offlineState: onlineState,
+        gpsState: noGpsFix,
       },
       now
     );
@@ -137,6 +146,7 @@ describe('deriveMissionScreenState', () => {
         allMissionItems: [approaching],
         synchronizationState: syncedState,
         offlineState: onlineState,
+        gpsState: noGpsFix,
       },
       now
     );
@@ -158,6 +168,7 @@ describe('deriveMissionScreenState', () => {
         allMissionItems: [inProgress],
         synchronizationState: syncedState,
         offlineState: onlineState,
+        gpsState: noGpsFix,
       },
       now
     );
@@ -182,6 +193,7 @@ describe('deriveMissionScreenState', () => {
         allMissionItems: [problem],
         synchronizationState: syncedState,
         offlineState: onlineState,
+        gpsState: noGpsFix,
       },
       now
     );
@@ -206,6 +218,7 @@ describe('deriveMissionScreenState', () => {
         allMissionItems: [active, problem],
         synchronizationState: syncedState,
         offlineState: onlineState,
+        gpsState: noGpsFix,
       },
       now
     );
@@ -227,6 +240,7 @@ describe('deriveMissionScreenState', () => {
         allMissionItems: [active],
         synchronizationState: { status: 'PENDING', pendingCount: 3, failedCount: 0 },
         offlineState: degradedState,
+        gpsState: noGpsFix,
       },
       now
     );
@@ -251,10 +265,91 @@ describe('deriveMissionScreenState', () => {
         allMissionItems: [active, ...nextItems],
         synchronizationState: syncedState,
         offlineState: onlineState,
+        gpsState: noGpsFix,
       },
       now
     );
     expect(result?.map.residences).toHaveLength(5);
     expect(result?.map.residences.every((r) => r.n !== 2)).toBe(true);
+  });
+
+  // Bug found testing on a real device (2026-08-03): the map position used
+  // to always fall back to the residence's own coordinate, real GPS fix or
+  // not — this never exercised the fix path at all.
+  it('draws the tractor at the real GPS fix when one is available, not the residence coordinate', () => {
+    const active = item({ id: 'i1', ordre: 1, status: 'EN_ROUTE', latitude: 45.5, longitude: -73.5 });
+    const result = deriveMissionScreenState(
+      {
+        mission: missionBase,
+        activeMissionItem: active,
+        nextMissionItems: [],
+        allMissionItems: [active],
+        synchronizationState: syncedState,
+        offlineState: onlineState,
+        gpsState: { available: true, position: { latitude: 45.78, longitude: -73.95, headingDegrees: 42 } },
+      },
+      now
+    );
+    expect(result?.map.position).toEqual({ longitude: -73.95, latitude: 45.78, heading: 42 });
+  });
+
+  // Bug found testing on a real device (2026-08-03): "RÉSIDENCE ACTUELLE"
+  // always showed "—" for distance — the propriétaire pointed out it should
+  // read something like "45 m" once a real fix exists.
+  it('computes a real straight-line residenceDistanceLabel from the live fix, under 1 km in meters', () => {
+    const residenceCoordinate = { latitude: 45.5, longitude: -73.5 };
+    const fixNearby = { latitude: 45.5004, longitude: -73.5 };
+    const active = item({ id: 'i1', ordre: 1, status: 'EN_ROUTE', ...residenceCoordinate });
+    const result = deriveMissionScreenState(
+      {
+        mission: missionBase,
+        activeMissionItem: active,
+        nextMissionItems: [],
+        allMissionItems: [active],
+        synchronizationState: syncedState,
+        offlineState: onlineState,
+        gpsState: { available: true, position: { ...fixNearby, headingDegrees: 0 } },
+      },
+      now
+    );
+    const expectedMeters = Math.round(haversineDistanceMeters(fixNearby, residenceCoordinate));
+    expect(result?.residenceDistanceLabel).toBe(`${expectedMeters} m`);
+  });
+
+  it('formats residenceDistanceLabel in km ("1,2 km" style) once past 1 km', () => {
+    const residenceCoordinate = { latitude: 45.5, longitude: -73.5 };
+    const fixFar = { latitude: 45.52, longitude: -73.5 };
+    const active = item({ id: 'i1', ordre: 1, status: 'EN_ROUTE', ...residenceCoordinate });
+    const result = deriveMissionScreenState(
+      {
+        mission: missionBase,
+        activeMissionItem: active,
+        nextMissionItems: [],
+        allMissionItems: [active],
+        synchronizationState: syncedState,
+        offlineState: onlineState,
+        gpsState: { available: true, position: { ...fixFar, headingDegrees: 0 } },
+      },
+      now
+    );
+    const expectedKm = (haversineDistanceMeters(fixFar, residenceCoordinate) / 1000).toFixed(1).replace('.', ',');
+    expect(result?.residenceDistanceLabel).toBe(`${expectedKm} km`);
+  });
+
+  it('residenceDistanceLabel stays "—" without a live fix, same as before', () => {
+    const active = item({ id: 'i1', ordre: 1, status: 'EN_ROUTE', latitude: 45.5, longitude: -73.5 });
+    const result = deriveMissionScreenState(
+      {
+        mission: missionBase,
+        activeMissionItem: active,
+        nextMissionItems: [],
+        allMissionItems: [active],
+        synchronizationState: syncedState,
+        offlineState: onlineState,
+        gpsState: noGpsFix,
+      },
+      now
+    );
+    expect(result?.residenceDistanceLabel).toBe('—');
   });
 });

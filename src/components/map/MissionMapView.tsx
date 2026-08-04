@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
 
 import type { Camera as CameraRef } from '@rnmapbox/maps';
@@ -66,6 +66,26 @@ export const MissionMapView = forwardRef<MissionMapViewHandle, Props>(function M
       });
     },
   }));
+
+  // Bug found testing on a real device (2026-08-03): `<Mapbox.Camera>`'s
+  // declarative props only apply the very first time the map mounts —
+  // `@rnmapbox/maps` does not re-animate the camera on its own when
+  // `centerCoordinate`/`heading` change on a later render. Without this,
+  // the camera stayed frozen at whichever position existed at mount time
+  // (the residence's own coordinate, since no GPS fix has arrived yet at
+  // first render) and only ever moved when the operator tapped "Recentrer"
+  // — the map never actually followed the tractor. docs/02 "Map First":
+  // "c'est la carte qui tourne" is a continuous behaviour, not manual-only.
+  useEffect(() => {
+    cameraRef.current?.setCamera({
+      centerCoordinate: [position.longitude, position.latitude],
+      heading: position.heading,
+      pitch: CAMERA_PITCH,
+      zoomLevel,
+      padding,
+      animationDuration: CAMERA_ANIMATION_DURATION_MS,
+    });
+  }, [position.longitude, position.latitude, position.heading, zoomLevel, padding]);
 
   return (
     <View style={StyleSheet.absoluteFill}>

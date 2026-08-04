@@ -45,8 +45,21 @@ import type { Db } from '@/persistence/types';
 // (`createExpoLocationProvider`). `reason` distinguishes why no live fix is
 // available (never invented — only what the provider itself can honestly
 // report) from the nominal `{available: true}` once a fix is flowing.
+// Bug found testing on a real device (2026-08-03): `gpsState` only ever
+// carried `{available: true}` (a permission flag), never the actual fix —
+// `deriveMissionScreenState.ts` fell back to drawing the tractor at the
+// highlighted residence's own coordinate always, real sensor or not (a
+// leftover from Sprint 017 partie 1/N, never revisited when the real sensor
+// was wired in partie 2/N). `position` is the raw last fix (docs/04 never
+// requires *position* itself to be validated, only the compass heading —
+// CLAUDE.md "c'est la carte qui tourne... cap validé après temporisation,
+// jamais le cap GPS brut" — so `headingDegrees` here is the GPS Engine's
+// own validated `HeadingChanged` value, not the raw fix's heading).
 export type GpsState =
-  | { available: true }
+  | {
+      available: true;
+      position: { latitude: number; longitude: number; headingDegrees: number } | null;
+    }
   | { available: false; reason: 'permission_denied' | 'no_mission' | 'unavailable' };
 
 // Sync/Offline now expose their real state shapes (docs/07/docs/08) instead
@@ -220,6 +233,9 @@ export function MissionProvider({
   const stateMachineRef = useRef<StateMachine | null>(null);
   const gpsEngineRef = useRef<GpsEngine | null>(null);
   const locationProviderRef = useRef<LocationProvider | null>(null);
+  // Latest *validated* heading (see the HeadingChanged subscription below) —
+  // read whenever a new position fix is recorded, never the raw fix heading.
+  const headingRef = useRef<number>(0);
   const gpsSimulatorRef = useRef<GpsSimulator | null>(null);
   const syncEngineRef = useRef<SynchronizationEngine | null>(null);
   const offlineEngineRef = useRef<OfflineEngine | null>(null);
@@ -259,6 +275,15 @@ export function MissionProvider({
       stateMachineRef.current = stateMachine;
       gpsEngineRef.current = createGpsEngine({ stateMachine, clock: systemClock });
       gpsSimulatorRef.current = createGpsSimulator(gpsEngineRef.current, systemClock);
+      // CLAUDE.md invariant: "c'est la carte qui tourne... cap validé après
+      // temporisation, jamais le cap GPS brut" — the map's heading always
+      // comes from the engine's own validated `HeadingChanged` event, never
+      // a raw fix's heading.
+      gpsEngineRef.current.on((event) => {
+        if (event.type === 'HeadingChanged') {
+          headingRef.current = event.headingDegrees;
+        }
+      });
       syncEngineRef.current = createSynchronizationEngine({
         db,
         clock: systemClock,
@@ -344,10 +369,16 @@ export function MissionProvider({
         locationProviderRef.current = locationProvider;
         const { granted } = await locationProvider.start(async (fix) => {
           await gpsEngineRef.current?.updatePosition(fix);
+          if (!cancelled) {
+            setGpsState({
+              available: true,
+              position: { latitude: fix.latitude, longitude: fix.longitude, headingDegrees: headingRef.current },
+            });
+          }
           await afterMutation(selectedMissionId);
         });
         if (!cancelled) {
-          setGpsState(granted ? { available: true } : { available: false, reason: 'permission_denied' });
+          setGpsState(granted ? { available: true, position: null } : { available: false, reason: 'permission_denied' });
         }
         // docs/04: "le moteur ne possède aucun timer propre" — same
         // principle as every other engine in this repo, the caller must
@@ -558,9 +589,19 @@ export function MissionProvider({
   // piece. `moveTo`/`advanceTime`/`recoverSignal` all reload the context
   // afterwards, exactly like reportProblem/resolveProblem/skipItem, since
   // the simulator can trigger real State Machine transitions underneath it.
+  // Mirrors the real sensor's `setGpsState` update (see `load()`) — the dev
+  // simulator drives the same map position display, not a second code path.
+  function recordDevGpsPosition(coordinate: GpsCoordinate) {
+    setGpsState({
+      available: true,
+      position: { latitude: coordinate.latitude, longitude: coordinate.longitude, headingDegrees: headingRef.current },
+    });
+  }
+
   const devGps: DevGpsSimulator = {
     async moveTo(coordinate, options) {
       await gpsSimulatorRef.current?.moveTo(coordinate, options);
+      recordDevGpsPosition(coordinate);
       if (mission) await afterMutation(mission.id);
     },
     async advanceTime(seconds) {
@@ -572,6 +613,7 @@ export function MissionProvider({
     },
     async recoverSignal(coordinate, options) {
       await gpsSimulatorRef.current?.recoverSignal(coordinate, options);
+      recordDevGpsPosition(coordinate);
       if (mission) await afterMutation(mission.id);
     },
   };

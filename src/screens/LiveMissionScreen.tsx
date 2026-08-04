@@ -34,7 +34,7 @@ export function LiveMissionScreen() {
   // object every MissionProvider render regardless of real changes).
   const screenState = useMemo(
     () => deriveMissionScreenState(ctx, new Date()),
-    [ctx.mission, ctx.activeMissionItem, ctx.allMissionItems, ctx.synchronizationState, ctx.offlineState] // eslint-disable-line react-hooks/exhaustive-deps
+    [ctx.mission, ctx.activeMissionItem, ctx.allMissionItems, ctx.synchronizationState, ctx.offlineState, ctx.gpsState] // eslint-disable-line react-hooks/exhaustive-deps
   );
   const endOfMissionState = useMemo(
     () => deriveEndOfMissionState(ctx, new Date()),

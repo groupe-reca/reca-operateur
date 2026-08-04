@@ -1,6 +1,7 @@
 import { colors } from '@/config/theme';
 import type { MissionContextValue } from '@/context/MissionContext';
 import type { MissionItem } from '@/domain/entities';
+import { haversineDistanceMeters } from '@/engines/gps';
 import type { SyncState } from '@/types/sync';
 
 import type { ActiveResidenceState, MissionScreenState } from './missionScreenState';
@@ -34,6 +35,14 @@ function elapsedSeconds(sinceIso: string | null, now: Date): number {
   return Math.max(0, Math.round((now.getTime() - new Date(sinceIso).getTime()) / 1000));
 }
 
+// Same "1,2 km" convention already used by missionScreenMocks.ts —
+// straight-line distance (haversine), not a routed distance (no Directions
+// API call wired here, that would be its own feature).
+function formatDistanceMeters(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1).replace('.', ',')} km`;
+}
+
 // Sprint 017 (partie 1/N) — translates real MissionContext data into the
 // exact shape MissionScreen already consumes (missionScreenMocks.ts), so
 // MissionScreen itself never changes. `null` means no residence to show
@@ -43,21 +52,22 @@ function elapsedSeconds(sinceIso: string | null, now: Date): number {
 //
 // Several fields have no real data source yet and are left honestly empty/
 // placeholder rather than invented (docs/10 "ne jamais masquer une erreur
-// par une valeur fictive") — residence distance/ETA (no live GPS fix,
-// sensor deferred), total mission ETA, tasks (no per-residence service list
-// modeled yet), alerts (mission_alerts table exists but nothing populates it
-// yet). `missionSeconds`/`timerSeconds` are computed once at derivation
+// par une valeur fictive") — residence ETA (would need a routed duration,
+// e.g. Directions API, not just a straight-line distance — its own
+// feature), total mission ETA, tasks (no per-residence service list
+// modeled yet), alerts (mission_alerts table exists but nothing populates
+// it yet). `missionSeconds`/`timerSeconds` are computed once at derivation
 // time, not a live ticking clock — same "Timer affiche, ne compte pas"
 // convention already used everywhere else, MissionScreen was never given a
 // ticker.
 export function deriveMissionScreenState(
   ctx: Pick<
     MissionContextValue,
-    'mission' | 'activeMissionItem' | 'nextMissionItems' | 'allMissionItems' | 'synchronizationState' | 'offlineState'
+    'mission' | 'activeMissionItem' | 'nextMissionItems' | 'allMissionItems' | 'synchronizationState' | 'offlineState' | 'gpsState'
   >,
   now: Date
 ): MissionScreenState | null {
-  const { mission, activeMissionItem, nextMissionItems, allMissionItems, synchronizationState, offlineState } = ctx;
+  const { mission, activeMissionItem, nextMissionItems, allMissionItems, synchronizationState, offlineState, gpsState } = ctx;
   if (!mission) return null;
 
   // PROBLEM items are deliberately excluded from ACTIVE_ITEM_STATES
@@ -90,14 +100,26 @@ export function deriveMissionScreenState(
     .slice(0, 5)
     .map((item, i) => ({ n: item.ordre, rank: (i + 1) as 1 | 2 | 3 | 4 | 5, coordinate: [item.longitude, item.latitude] as [number, number] }));
 
-  // No live GPS fix yet (sensor deferred) — the tractor is shown at the
-  // highlighted residence's own coordinate rather than an arbitrary
-  // hardcoded default, honest about the limitation without a numeric lie.
-  const position = {
-    longitude: highlighted.longitude ?? 0,
-    latitude: highlighted.latitude ?? 0,
-    heading: 0,
-  };
+  // Real GPS fix (Sprint 017 partie 2/N) when the sensor has one — falls
+  // back to the highlighted residence's own coordinate only while no fix
+  // has arrived yet (permission not granted, or just not received one),
+  // honest about the limitation without a numeric lie. Bug found testing on
+  // a real device (2026-08-03): this used to always fall back, never
+  // reading the real position at all.
+  const livePosition = gpsState.available ? gpsState.position : null;
+  const position = livePosition
+    ? { longitude: livePosition.longitude, latitude: livePosition.latitude, heading: livePosition.headingDegrees }
+    : { longitude: highlighted.longitude ?? 0, latitude: highlighted.latitude ?? 0, heading: 0 };
+
+  // Straight-line distance from the live fix to the residence — real
+  // number once a fix and the residence's own coordinates both exist,
+  // otherwise the same honest "—" placeholder as before.
+  const residenceDistanceLabel =
+    livePosition && highlighted.latitude !== null && highlighted.longitude !== null
+      ? formatDistanceMeters(
+          haversineDistanceMeters(livePosition, { latitude: highlighted.latitude, longitude: highlighted.longitude })
+        )
+      : '—';
 
   return {
     activeState,
@@ -114,7 +136,7 @@ export function deriveMissionScreenState(
       totalEtaLabel: 'Estimation indisponible',
     },
     address: highlighted.address,
-    residenceDistanceLabel: '—',
+    residenceDistanceLabel,
     residenceEtaLabel: '—',
     timerSeconds,
     problem: problemItem
