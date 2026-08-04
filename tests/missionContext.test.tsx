@@ -355,6 +355,77 @@ describe('MissionContext — real engines wired over a fake DB', () => {
     });
   });
 
+  it('setRealGpsPaused(true) makes real fixes a no-op, and resuming lets fixes drive the engine again', async () => {
+    const { provider, emit } = createControllableLocationProvider();
+    const db = createFakeDb();
+    const transport = createFakeTransport();
+    const { result } = renderHook(() => useMissionContext(), {
+      wrapper: ({ children }) => (
+        <MissionProvider
+          getDbOverride={() => Promise.resolve(db)}
+          syncTransportOverride={() => transport}
+          speakerOverride={() => createFakeSpeaker()}
+          locationProviderOverride={() => provider}
+          networkSensorOverride={() => createFakeNetworkSensor()}
+          detectionRadiiStorageOverride={() => createFakeDetectionRadiiStorage()}
+        >
+          {children}
+        </MissionProvider>
+      ),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const activeId = result.current.activeMissionItem?.id as string;
+    const coordinate = { latitude: 45.78, longitude: -73.95 };
+    const itemRepo = createMissionItemRepository(db);
+    const activeItem = await itemRepo.getById(activeId);
+    await itemRepo.upsert({ ...(activeItem as NonNullable<typeof activeItem>), ...coordinate });
+
+    const fixAt = (timestamp: string): GpsPosition => ({
+      ...coordinate,
+      accuracyMeters: 5,
+      headingDegrees: null,
+      speedMetersPerSecond: null,
+      timestamp: new Date(timestamp),
+    });
+
+    act(() => {
+      result.current.dev.setRealGpsPaused(true);
+    });
+    expect(result.current.dev.realGpsPaused).toBe(true);
+
+    // Same two-step dance that confirms APPROACHING in the test above —
+    // while paused, neither fix should reach the engine or gpsState at all.
+    await act(async () => {
+      await emit(fixAt('2026-08-02T10:00:00.000Z'));
+    });
+    await act(async () => {
+      await emit(fixAt('2026-08-02T10:00:00.000Z'));
+      await emit(fixAt('2026-08-02T10:00:05.000Z'));
+    });
+
+    expect(result.current.allMissionItems.find((i) => i.id === activeId)?.status).toBe('EN_ROUTE');
+    expect(result.current.gpsState).toEqual({ available: true, position: null });
+
+    act(() => {
+      result.current.dev.setRealGpsPaused(false);
+    });
+    expect(result.current.dev.realGpsPaused).toBe(false);
+
+    await act(async () => {
+      await emit(fixAt('2026-08-02T10:00:00.000Z'));
+    });
+    await act(async () => {
+      await emit(fixAt('2026-08-02T10:00:00.000Z'));
+      await emit(fixAt('2026-08-02T10:00:05.000Z'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.allMissionItems.find((i) => i.id === activeId)?.status).toBe('APPROACHING');
+    });
+  });
+
   it('gpsState reports permission_denied when the location provider refuses', async () => {
     const deniedProvider: LocationProvider = {
       start: async () => ({ granted: false }),

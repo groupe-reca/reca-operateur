@@ -178,6 +178,15 @@ export type DevTools = {
   // `null` = real signal (always-online stub, current behaviour unchanged).
   setNetworkOverride(online: boolean | null): Promise<void>;
   exportLogs(): Promise<string>;
+  // Sprint "dev.gps vs capteur réel" — the real `expo-location` sensor and
+  // the GPS simulator both drive the same GPS Engine instance once a mission
+  // is loaded (found competing on-device, memory.md 2026-08-03: a real fix
+  // arriving mid-simulation could invalidate a pending simulated transition
+  // before its confirmation delay elapsed). `DevScreen` pauses the real
+  // sensor's effect on the engine while it's open — this flag lets it show
+  // that state and offer an early manual resume.
+  realGpsPaused: boolean;
+  setRealGpsPaused(paused: boolean): void;
 };
 
 const MissionReactContext = createContext<MissionContextValue | null>(null);
@@ -251,6 +260,7 @@ export function MissionProvider({
   });
   const [gpsState, setGpsState] = useState<GpsState>({ available: false, reason: 'unavailable' });
   const [voiceEnabled, setVoiceEnabledState] = useState(true);
+  const [realGpsPaused, setRealGpsPausedState] = useState(false);
   // Mirrors gpsEngine.getThresholds() so SettingsScreen/DevScreen re-render
   // on change — the engine itself stays the single source of truth for
   // actual GPS Engine behaviour, this is just a React-visible copy of it.
@@ -261,6 +271,9 @@ export function MissionProvider({
   const gpsEngineRef = useRef<GpsEngine | null>(null);
   const detectionRadiiStorageRef = useRef<DetectionRadiiStorage | null>(null);
   const locationProviderRef = useRef<LocationProvider | null>(null);
+  // Read (not `realGpsPaused` state) inside the `onFix` closure below — a
+  // ref stays current across renders without re-subscribing the sensor.
+  const realGpsPausedRef = useRef(false);
   // Latest *validated* heading (see the HeadingChanged subscription below) —
   // read whenever a new position fix is recorded, never the raw fix heading.
   const headingRef = useRef<number>(0);
@@ -406,6 +419,12 @@ export function MissionProvider({
         const locationProvider = (locationProviderOverride ?? createExpoLocationProvider)();
         locationProviderRef.current = locationProvider;
         const { granted } = await locationProvider.start(async (fix) => {
+          // Sprint "dev.gps vs capteur réel" — while DevScreen is
+          // simulating, a real fix is ignored entirely rather than reaching
+          // the engine (see DevScreen.tsx's pause-on-mount/resume-on-unmount
+          // effect) — the sensor itself keeps running, only its effect on
+          // the engine/display is short-circuited.
+          if (realGpsPausedRef.current) return;
           await gpsEngineRef.current?.updatePosition(fix);
           if (!cancelled) {
             setGpsState({
@@ -657,6 +676,12 @@ export function MissionProvider({
     setLoading(false);
   }
 
+  // Sprint "dev.gps vs capteur réel" — see DevTools.realGpsPaused above.
+  function setRealGpsPaused(paused: boolean): void {
+    realGpsPausedRef.current = paused;
+    setRealGpsPausedState(paused);
+  }
+
   // Sprint 019 — see DevTools/DevGpsSimulator above for the "why" of each
   // piece. `moveTo`/`advanceTime`/`recoverSignal` all reload the context
   // afterwards, exactly like reportProblem/resolveProblem/skipItem, since
@@ -767,6 +792,8 @@ export function MissionProvider({
     getTransitions: getDevTransitions,
     setNetworkOverride,
     exportLogs,
+    realGpsPaused,
+    setRealGpsPaused,
   };
 
   const value: MissionContextValue = {

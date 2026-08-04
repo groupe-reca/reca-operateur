@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ScrollView, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,6 +29,18 @@ export function DevScreen({ ctx, onClose }: Props) {
   const [lastSimulatedAddress, setLastSimulatedAddress] = useState<string | null>(null);
   const [networkForcedOffline, setNetworkForcedOffline] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Sprint "dev.gps vs capteur réel" — the real sensor and the simulator
+  // compete on the same GPS Engine instance (memory.md, 2026-08-03); pausing
+  // the real sensor's effect for the lifetime of this screen avoids a real
+  // fix invalidating a simulated candidate mid-confirmation-delay. Automatic
+  // resume on unmount means closing this screen is always enough — no state
+  // to forget to reset.
+  useEffect(() => {
+    ctx.dev.setRealGpsPaused(true);
+    return () => ctx.dev.setRealGpsPaused(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function refreshStates() {
     setStates(ctx.dev.getStates());
@@ -129,6 +141,21 @@ export function DevScreen({ ctx, onClose }: Props) {
       </Section>
 
       <Section title="Simuler le GPS">
+        <Txt variant="meta" color={colors.textSecondary}>
+          {ctx.dev.realGpsPaused
+            ? 'Capteur réel en pause (simulation active).'
+            : 'Capteur réel actif.'}
+        </Txt>
+        {ctx.dev.realGpsPaused ? (
+          <PressableScale
+            onPress={() => ctx.dev.setRealGpsPaused(false)}
+            style={styles.secondaryButton}
+          >
+            <Txt variant="meta" color={colors.textSecondary}>
+              Reprendre le capteur réel
+            </Txt>
+          </PressableScale>
+        ) : null}
         {canSimulateGps ? (
           <>
             <Row label="Cible" value={target?.address ?? '—'} />

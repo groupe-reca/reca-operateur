@@ -10,6 +10,54 @@ _Aucun plan actif pour le moment._
 
 ## Archivé
 
+### ✅ Suspension du capteur GPS réel pendant la simulation (branche `sprint-dev-gps-vs-real-sensor`, 2026-08-04)
+
+**Objectif** : résout le suivi ouvert trouvé en test autonome (`memory.md`, 2026-08-03) —
+`dev.gps` (simulateur) et le capteur GPS réel tournent simultanément sur la même instance de GPS
+Engine dès qu'une mission est chargée, rien ne les rend mutuellement exclusifs, ce qui empêchait de
+confirmer une transition simulée en direct sur l'appareil quand la vraie position était hors zone.
+**Décision produit validée avec le propriétaire** : suspendre automatiquement le capteur réel
+pendant la simulation, plutôt qu'un interrupteur manuel explicite — reprise automatique à la
+fermeture de `DevScreen` (+ un bouton « Reprendre le capteur réel » pour une reprise anticipée sans
+fermer l'écran).
+
+**Design** :
+1. **`MissionContext.tsx`** : nouveau `realGpsPausedRef` (lu par le callback `onFix` du vrai
+   capteur — un fix reçu pendant que `paused === true` n'appelle ni `gpsEngine.updatePosition()`
+   ni `setGpsState()`, ignoré silencieusement, jamais un crash) + état React `realGpsPaused`
+   (miroir, pour que `DevScreen` se re-rende). Nouvelle commande `setRealGpsPaused(paused: boolean)`
+   exposée sur `dev` (pas sur `dev.gps` — ce n'est pas une action du simulateur lui-même, plutôt un
+   contrôle indépendant de la source de position active).
+2. **`DevScreen.tsx`** : `useEffect` au montage → `ctx.dev.setRealGpsPaused(true)` ; au démontage
+   (fermeture de l'écran) → `ctx.dev.setRealGpsPaused(false)` — reprise automatique, jamais besoin
+   de s'en souvenir. Nouveau bouton « Reprendre le capteur réel » dans la section « Simuler le
+   GPS » (visible seulement si `ctx.dev.realGpsPaused === true`) pour une reprise manuelle
+   anticipée sans fermer l'écran.
+3. **Aucun changement** à `expoLocationProvider.ts`/`gpsEngine.ts` — le capteur natif continue de
+   tourner en arrière-plan (pas de coût de permission/redémarrage), seul son effet sur le moteur
+   est court-circuité pendant la pause. Le simulateur, lui, n'a jamais été concerné par cette
+   compétition (`gpsSimulatorRef` appelle directement les mêmes méthodes du moteur).
+
+**Hors scope** : interrupteur explicite « source de position » (option écartée par le propriétaire) ;
+suspendre le capteur réel en dehors du mode développement (aucun cas d'usage documenté).
+
+**Vérification** : tests contexte (`missionContext.test.tsx` — un fix réel reçu pendant la pause
+n'atteint pas le moteur/`gpsState`, un fix reçu après reprise l'atteint de nouveau) ; tests écran
+(`devScreen.test.tsx` — pause au montage/reprise au démontage/bouton manuel) ; `tsc`/`eslint`/
+`jest` verts.
+
+**Réalisé conformément au plan.** `realGpsPausedRef` lu au tout début du callback `onFix` (avant
+`gpsEngine.updatePosition()`/`setGpsState()`, retour anticipé silencieux) ; `dev.realGpsPaused`/
+`dev.setRealGpsPaused` exposés sur `MissionContextValue`. `DevScreen` : effet monté/démonté +
+texte d'état (« Capteur réel en pause (simulation active). » / « Capteur réel actif. ») + bouton
+conditionnel. Tests : 2 nouveaux tests `devScreen.test.tsx` (pause au montage/reprise au démontage
++ bouton visible seulement en pause) + 1 nouveau test d'intégration `missionContext.test.tsx`
+(fixes réels ignorés pendant la pause, repris après résumé — même scénario en deux temps
+approche/confirmation que le test `gpsState` existant). 185/185 tests verts, `tsc`/`eslint`
+propres.
+
+## Archivé
+
 ### ✅ Réglages du rayon de détection GPS (branche `sprint-detection-radii-settings`, 2026-08-03)
 
 **Objectif** : demande explicite du propriétaire — rendre `approachRadiusMeters` (« Rayon en

@@ -1359,6 +1359,10 @@ visible sur l'écran de mission réel après fermeture de `DevScreen` tant qu'au
 n'écrase `gpsState.position` — confirme au passage que `gpsState`/`dev.gps` partagent bien un seul
 état de vérité (comportement voulu), juste avec cet angle mort de compétition non résolu.
 
+**Résolu** au sprint « Suspension du capteur GPS réel pendant la simulation » (2026-08-04, voir
+plus bas) — décision produit prise avec le propriétaire : suspension automatique plutôt qu'un
+interrupteur explicite.
+
 ## Réglages du rayon de détection GPS (2026-08-04)
 
 Demande explicite du propriétaire (« Rayon en approche / Rayon en cours réglables + une règle de
@@ -1397,6 +1401,36 @@ lecture seule (`DEFAULT_GPS_THRESHOLDS`, jamais modifiables).
 - **Non vérifié sur device cette passe** — aucune dépendance native ajoutée (AsyncStorage déjà
   présent depuis le câblage Supabase), donc aucun nouveau build natif requis, mais pas de test
   physique effectué.
+
+## Suspension du capteur GPS réel pendant la simulation (2026-08-04)
+
+Résout le suivi ouvert du 2026-08-03 ci-dessus. Décision produit demandée explicitement au
+propriétaire (deux options posées via `AskUserQuestion`, pas décidée unilatéralement) : suspendre
+automatiquement le capteur réel pendant la simulation vs. un interrupteur explicite « source de
+position » dans `DevScreen`. **Choix retenu : suspension automatique** (recommandé — comportement
+implicite mais sans risque d'oubli, vs. un geste supplémentaire à chaque test).
+
+- **Le capteur natif continue de tourner** pendant la pause (pas de `locationProvider.stop()`) —
+  seul son effet sur le moteur/l'affichage est court-circuité (`realGpsPausedRef.current` vérifié
+  en tout premier dans le callback `onFix`, avant `gpsEngine.updatePosition()`). Évite de repasser
+  par tout le cycle de permission Android (`requestForegroundPermissionsAsync`) à chaque
+  fermeture/réouverture de `DevScreen`.
+- **`realGpsPausedRef` (lu par le callback) + état React `realGpsPaused` (miroir, pour le
+  re-rendu)** — même patron que `headingRef`/`gpsState` déjà en place : une closure fermée une
+  seule fois au montage de l'effet `load()` ne peut pas lire un état React qui changerait plus
+  tard, seule une ref reste à jour.
+- **Portée de la commande** : `dev.setRealGpsPaused`, pas `dev.gps.setRealGpsPaused` — ce n'est pas
+  une action du simulateur GPS lui-même (`DevGpsSimulator` reste inchangé), plutôt un contrôle
+  indépendant de quelle source de position a le droit d'affecter le moteur.
+- **`DevScreen`** : pause au montage / reprise au démontage (`useEffect` avec un tableau de deps
+  vide, volontairement — un remount complet de l'écran est la seule façon d'y rentrer, pas besoin
+  de re-synchroniser sur un changement de props) + bouton manuel « Reprendre le capteur réel »
+  (visible seulement si `ctx.dev.realGpsPaused`) pour reprendre sans fermer l'écran — utile pour
+  observer si un vrai fix confirmerait aussi la même transition, sans perdre le reste de l'état de
+  l'écran.
+- **Aucun changement** à `expoLocationProvider.ts`/`gpsEngine.ts` — la pause vit entièrement dans
+  `MissionContext`, la couche la plus proche de l'appelant du capteur, sans toucher les deux
+  moteurs/intégrations qui n'ont pas besoin de savoir qu'ils sont temporairement ignorés.
 
 ## Système de mémoire
 
