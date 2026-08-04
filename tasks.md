@@ -527,6 +527,23 @@
   Vérifié : `tsc`/`eslint`/`jest` verts (171/171, 20 suites, dont 3 nouveaux `migrations.test.ts` +
   2 nouveaux tests `voiceEnabled` + 5 nouveaux `settingsScreen.test.tsx`)/`expo-doctor` 19/20
   (dérive `react-native-gesture-handler` pré-existante, sans rapport).
+- [x] **Vérification autonome sur device, sans le propriétaire** (2026-08-03) — celui-ci s'est
+  absenté après la passe Migration/Paramètres en demandant de continuer les tests possibles sans
+  lui ; téléphone resté branché en USB à ce VPS, piloté via `adb shell input tap`/
+  `uiautomator dump` (jamais de coordonnées devinées). **Vérifié sans problème** :
+  hamburger→`SettingsScreen` (Compte/Voix/Thème/Version, toggle voix, « Mode développement »),
+  `DevScreen` (États réels, Seuils GPS), `dev.setNetworkOverride` → `RECOVERING` observé en direct
+  (jamais `ONLINE` immédiat). Aucun crash sur toute la session.
+  - [ ] **Suivi ouvert — décision produit requise** : `dev.gps` (simulateur) et le capteur GPS réel
+    tournent simultanément sur le même GPS Engine dès qu'une mission est chargée, rien ne les rend
+    mutuellement exclusifs. Trouvé en testant : la résidence active est à ~295 m de la position
+    réelle de l'appareil (juste au-dessus du rayon d'approche 250 m) — le vrai fix arrivant toutes
+    les ~5 s invaliderait probablement la candidature de validation que le simulateur vient
+    d'établir, empêchant `dev.gps.moveTo`+`advanceTime` de confirmer une transition en direct
+    (fonctionne pourtant de façon fiable dans `tests/missionContext.test.tsx`, où le faux
+    `LocationProvider` n'accorde jamais la permission). Nécessite une vraie décision produit
+    (suspendre le capteur réel pendant la simulation ? interrupteur explicite dans `DevScreen` ?)
+    — non corrigé, voir détail dans `memory.md`.
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
 
 ## À vérifier

@@ -1315,9 +1315,49 @@ en théorie.
   `DevScreen` reste joignable, mais un niveau plus loin : un item « Mode développement » à
   l'intérieur de `SettingsScreen`, toujours gardé par `__DEV__` (même barrière d'accès, juste
   déplacée). Pas de régression pour le workflow dev — juste un tap de plus.
-- **Navigation hamburger→Paramètres non vérifiée manuellement sur l'appareil** : le propriétaire a
-  demandé de mettre ce test de côté pour avancer plus vite pendant la session — seuls les tests
-  automatisés (`tests/settingsScreen.test.tsx`) couvrent ce chemin. Suivi ouvert non bloquant.
+- **Navigation hamburger→Paramètres vérifiée après coup, sans le propriétaire** : celui-ci avait
+  mis ce test de côté pour avancer, puis s'est absenté (« je ne suis pas chez moi ») en demandant
+  de faire les tests possibles sans lui. Le téléphone est resté connecté en USB à ce VPS — vérifié
+  via `adb shell input tap` (coordonnées lues avec `uiautomator dump`, jamais devinées à l'œil) :
+  hamburger → `SettingsScreen` s'affiche correctement (Compte/Voix/Thème/Version), bascule du
+  `Switch` voix fonctionne visuellement, « Mode développement » ouvre bien `DevScreen`. Aucun
+  crash sur toute la session.
+
+## Vérification autonome sur device sans le propriétaire (2026-08-03, suite)
+
+Le propriétaire s'est absenté après la Sprint « Migration + Paramètres » en demandant de continuer
+les tests possibles sans lui — téléphone resté branché en USB. Pilotage direct via
+`adb shell input tap`/`uiautomator dump` (jamais de coordonnées devinées depuis une capture
+d'écran seule — toujours confirmées par le dump d'accessibilité avant de taper), captures d'écran
+après chaque action pour vérifier visuellement.
+
+**Vérifié sans problème** : `SettingsScreen` (Compte/Voix/Thème/Version, toggle voix, « Mode
+développement »), `DevScreen` (États réels affichés — Mission/Phase GPS/Synchronisation/
+Connectivité/décompte résidences —, Seuils GPS), `dev.setNetworkOverride` → `RECOVERING` observé en
+direct (jamais `ONLINE` immédiat, conforme à `docs/08`/`offlineEngine.test.ts`). Aucun crash sur
+toute la session (vérifié via `adb logcat` après chaque action).
+
+**Découverte importante, non corrigée (décision produit requise)** : `dev.gps` (simulateur,
+Sprint 011-012/019) et le capteur GPS réel (Sprint 017 partie 2/N) tournent **simultanément** sur
+la **même instance** de GPS Engine dès qu'une mission est chargée — rien ne les rend mutuellement
+exclusifs. Observé en conditions réelles : la résidence active mission #9 est à ~295 m de la
+position réelle de l'appareil (juste **au-dessus** du rayon d'approche 250 m) ; `dev.gps.moveTo`
+vers la résidence (0 m) puis `dev.gps.advanceTime(30)` — séquence qui **réussit de façon fiable**
+dans `tests/missionContext.test.tsx` (« dev.gps drives... ») — ne confirme **jamais** la transition
+EN_ROUTE→APPROACHING en direct sur l'appareil, testé à plusieurs reprises avec des délais réels
+généreux entre les taps. Hypothèse la plus probable : le vrai fix GPS (`~295 m`, hors rayon
+d'approche) arrive toutes les ~5 s via `watchPositionAsync` et invalide/réinitialise la candidature
+de validation que le simulateur venait d'établir, avant que le délai de confirmation (5 s) ne soit
+écoulé — une compétition entre les deux sources de fix sur le même moteur, jamais rencontrée dans
+les tests automatisés (le faux `LocationProvider` n'y accorde jamais la permission, laissant le
+simulateur seul maître du moteur). **Pas corrigé ici** : la solution demande une vraie décision
+produit (le mode dev doit-il suspendre le capteur réel pendant qu'il simule ? Faut-il un
+interrupteur explicite « source de position » dans `DevScreen` ?) — inventer un comportement sans
+validation aurait été hors mandat, exactement le genre de décision réservée au propriétaire.
+**Effet secondaire observé, inoffensif** : la dernière position simulée (résidence, 0 m) reste
+visible sur l'écran de mission réel après fermeture de `DevScreen` tant qu'aucun nouveau vrai fix
+n'écrase `gpsState.position` — confirme au passage que `gpsState`/`dev.gps` partagent bien un seul
+état de vérité (comportement voulu), juste avec cet angle mort de compétition non résolu.
 
 ## Système de mémoire
 
