@@ -10,6 +10,61 @@ _Aucun plan actif pour le moment._
 
 ## Archivé
 
+### ✅ Sélection de mission active déterministe (branche `sprint-mission-selection`, 2026-08-04)
+
+**Objectif** : suivi ouvert depuis Sprint 013-014 (`tasks.md`) — la Mission démo (seedée quand la
+base est vide) et une vraie Mission Supabase peuvent coexister en local (constaté sur l'appareil de
+test : la démo a été seedée avant que le vrai compte/mission existe). `selectedMissionId =
+assigned?.id ?? missions[0]?.id ?? null` (Sprint 017 partie 1/N) résout déjà le cas nominal
+(`fetchAssignedMission` réussit), mais retombe sur `missions[0]` — ordre non garanti côté SQLite —
+dès que `assigned` est `null` (pas d'`employeeId`, ou échec réseau transitoire alors qu'une vraie
+mission avait déjà été sélectionnée une session précédente).
+
+**Design** : nouvelle fonction pure `selectMissionId({ assignedId, missions, sessions })`
+(`MissionContext.tsx`, même statut que `deriveActiveAndNext` — testable isolément, aucun accès
+DB) :
+1. `assignedId` si présent (cas nominal, déjà le comportement actuel).
+2. Sinon, la mission de la **session opérateur la plus récente** (`operator_sessions`, déjà
+   persistée à chaque montage) dont l'id existe encore parmi `missions` — préserve ce que
+   l'opérateur regardait réellement la dernière fois plutôt qu'un ordre SQL arbitraire ; couvre le
+   cas réseau/employeeId absent sans jamais supprimer la Mission démo ni inventer un mécanisme de
+   nettoyage de données.
+3. Sinon `missions[0]?.id ?? null` (dernier recours inchangé — base fraîchement seedée, une seule
+   mission, aucune session encore ouverte).
+
+`load()` et `refreshAssignment()` appellent tous deux `selectMissionId` (actuellement dupliquent
+une logique légèrement différente : `refreshAssignment` utilise déjà `mission?.id` en repli, ce qui
+est en fait un cas particulier de « dernière session » puisque `mission` en mémoire provient
+justement de la dernière sélection — remplacé par un appel à la même fonction pour n'avoir qu'une
+seule règle).
+
+**Hors scope, explicitement exclu** : suppression/nettoyage automatique de la Mission démo une fois
+une vraie mission confirmée (suppression de données jamais faite sans confirmation explicite,
+voir `memory.md` — refus similaire pour la résidence « 148 Rue Scott ») ; un champ `source`
+(démo/réelle) sur `Mission` (aucun besoin fonctionnel au-delà de ce choix de repli, inventer un
+champ schema pour ça serait disproportionné).
+
+**Vérification** : test pur (`selectMissionId` — priorité assigned > session récente valide >
+missions[0] > null, ignore une session dont la mission n'existe plus) ; test d'intégration
+(`missionContext.test.tsx` — après une session avec une vraie mission, un redémarrage sans
+`employeeId` ne retombe pas sur la démo) ; `tsc`/`eslint`/`jest` verts.
+
+**Réalisé conformément au plan.** `selectMissionId` exportée depuis `MissionContext.tsx`, pure,
+5 tests directs (assigned prioritaire, session récente valide gagne sur l'ordre du tableau, session
+pointant vers une mission supprimée ignorée, repli `missions[0]`, `null` si rien). `load()` :
+`existingSessions` lu **avant** l'upsert de la session de ce montage (sinon elle se
+« découvrirait » elle-même, toujours vide de `missionId` à ce stade de toute façon).
+`refreshAssignment()` : `assigned?.id ?? mission?.id ?? selectMissionId(...)` — le `mission?.id` en
+mémoire (déjà affiché à l'écran) garde la priorité sur l'historique de session, une seule règle de
+repli partagée avec `load()` au lieu de deux logiques légèrement différentes. Nouveau test
+d'intégration reproduisant exactement le scénario trouvé sur l'appareil (démo insérée en premier,
+vraie mission ensuite, `getAllAsync` du faux `Db` préserve l'ordre d'insertion) : sans
+`employeeId`, la sélection retombe sur la vraie mission (dernière session) et non `missions[0]`
+(démo). Aucune suppression/nettoyage de la démo — hors scope assumé. 191/191 tests verts (26 dans
+`missionContext.test.tsx`, 6 nouveaux), `tsc`/`eslint` propres.
+
+## Archivé
+
 ### ✅ Suspension du capteur GPS réel pendant la simulation (branche `sprint-dev-gps-vs-real-sensor`, 2026-08-04)
 
 **Objectif** : résout le suivi ouvert trouvé en test autonome (`memory.md`, 2026-08-03) —

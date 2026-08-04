@@ -191,6 +191,37 @@ export type DevTools = {
 
 const MissionReactContext = createContext<MissionContextValue | null>(null);
 
+// Pure — directly testable without React/DB. Sprint "Sélection de mission
+// active déterministe" (2026-08-04): a demo mission (seeded once when the DB
+// was empty) and a real Supabase mission can coexist locally (found on the
+// test device — the demo was seeded before the real account/mission
+// existed). `assignedId` already resolves the nominal case (a fresh
+// `fetchAssignedMission` succeeded); this only matters once it's `null`
+// (no `employeeId`, or a transient network failure) — falling back to
+// `missions[0]` then would pick an arbitrary SQLite row order, possibly the
+// demo mission even though the operator was last looking at a real one.
+// Preferring the most recent operator session's mission instead preserves
+// "what was actually being worked on", without ever deleting the demo
+// mission or inventing a `source` field on `Mission` (see plans.md — no
+// data cleanup without explicit confirmation, same stance as the "148 Rue
+// Scott" residence question).
+export function selectMissionId(params: {
+  assignedId: string | null;
+  missions: Mission[];
+  sessions: OperatorSession[];
+}): string | null {
+  const { assignedId, missions, sessions } = params;
+  if (assignedId) return assignedId;
+
+  const missionIds = new Set(missions.map((m) => m.id));
+  const lastKnownSession = [...sessions]
+    .sort((a, b) => b.openedAt.localeCompare(a.openedAt))
+    .find((session) => session.missionId !== null && missionIds.has(session.missionId));
+  if (lastKnownSession) return lastKnownSession.missionId;
+
+  return missions[0]?.id ?? null;
+}
+
 // Pure — directly testable without React/DB. docs/03: "une seule résidence
 // active"; the rest of the waiting ones are shown as "next" in mission order.
 // "Active" here is the state-machine engine's own rule (docs/09 "Résidence
@@ -362,14 +393,19 @@ export function MissionProvider({
       const itemRepo = createMissionItemRepository(db);
       const sessionRepo = createOperatorSessionRepository(db);
 
-      const [missions, missionItems] = await Promise.all([missionRepo.getAll(), itemRepo.getAll()]);
+      const [missions, missionItems, existingSessions] = await Promise.all([
+        missionRepo.getAll(),
+        itemRepo.getAll(),
+        sessionRepo.getAll(),
+      ]);
 
-      // Fix (2026-08-02, see memory.md "suivi ouvert") — `missions[0]` was
-      // ambiguous once a real Supabase mission coexists locally with the
-      // demo seed. When a real mission was fetched this session, its id is
-      // the source of truth; the demo-only case (fresh dev environment,
-      // exactly one mission) is unaffected.
-      const selectedMissionId = assigned?.id ?? missions[0]?.id ?? null;
+      // Fix (2026-08-02, refined 2026-08-04 — see selectMissionId above and
+      // memory.md "suivi ouvert") — `missions[0]` was ambiguous once a real
+      // Supabase mission coexists locally with the demo seed. `assigned?.id`
+      // resolves the nominal case; `existingSessions` (read before this
+      // session's own upsert below) resolves the "no fresh assignment this
+      // load" case without falling back to arbitrary row order.
+      const selectedMissionId = selectMissionId({ assignedId: assigned?.id ?? null, missions, sessions: existingSessions });
       const selectedMission = missions.find((m) => m.id === selectedMissionId) ?? null;
       let selectedItems = selectedMissionId ? missionItems.filter((item) => item.missionId === selectedMissionId) : [];
       const selectedItemIds = new Set(selectedItems.map((item) => item.id));
@@ -667,8 +703,17 @@ export function MissionProvider({
     }
     const missionRepo = createMissionRepository(db);
     const itemRepo = createMissionItemRepository(db);
-    const [missions, missionItems] = await Promise.all([missionRepo.getAll(), itemRepo.getAll()]);
-    const selectedMissionId = assigned?.id ?? mission?.id ?? missions[0]?.id ?? null;
+    const sessionRepo = createOperatorSessionRepository(db);
+    const [missions, missionItems, sessions] = await Promise.all([
+      missionRepo.getAll(),
+      itemRepo.getAll(),
+      sessionRepo.getAll(),
+    ]);
+    // `mission?.id` (already on screen) wins over the session-history
+    // fallback inside selectMissionId — no reason to jump away from what's
+    // currently displayed just because refreshAssignment found no new
+    // assignment this call.
+    const selectedMissionId = assigned?.id ?? mission?.id ?? selectMissionId({ assignedId: null, missions, sessions });
     const selectedMission = missions.find((m) => m.id === selectedMissionId) ?? null;
     const selectedItems = selectedMissionId ? missionItems.filter((item) => item.missionId === selectedMissionId) : [];
     setMission(selectedMission);

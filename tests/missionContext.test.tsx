@@ -3,12 +3,14 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { GpsPosition } from '@/engines/gps';
 import type { Speaker } from '@/engines/voice';
 import type { SyncOperationOutcome, SyncTransport } from '@/engines/sync/types';
-import type { MissionItem, SyncOperation } from '@/domain/entities';
-import { MissionProvider, useMissionContext } from '@/context/MissionContext';
+import type { Mission, MissionItem, OperatorSession, SyncOperation } from '@/domain/entities';
+import { MissionProvider, selectMissionId, useMissionContext } from '@/context/MissionContext';
 import type { LocationProvider } from '@/integrations/location/expoLocationProvider';
 import type { NetworkSensor } from '@/integrations/network/expoNetInfoProvider';
 import type { DetectionRadiiOverride, DetectionRadiiStorage } from '@/integrations/settings/detectionRadiiStorage';
 import { createMissionItemRepository } from '@/persistence/repositories/missionItemRepository';
+import { createMissionRepository } from '@/persistence/repositories/missionRepository';
+import { createOperatorSessionRepository } from '@/persistence/repositories/operatorSessionRepository';
 
 import { createFakeDb } from './testFakeDb';
 
@@ -628,5 +630,163 @@ describe('MissionContext — real engines wired over a fake DB', () => {
     });
 
     expect(result.current.allMissionItems.find((i) => i.id === activeId)?.status).toBe('EN_ROUTE');
+  });
+});
+
+describe('selectMissionId (pure)', () => {
+  const demo: Mission = {
+    id: 'demo-mission',
+    date: null,
+    route: 'Route 12A',
+    operator: 'Opérateur Démo',
+    equipment: null,
+    status: 'READY',
+    scheduledStartAt: null,
+    actualStartAt: null,
+    actualEndAt: null,
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+  };
+  const real: Mission = { ...demo, id: 'real-mission', operator: null };
+
+  function sessionFor(missionId: string | null, openedAt: string): OperatorSession {
+    return {
+      id: `session-${openedAt}`,
+      userId: null,
+      missionId,
+      openedAt,
+      closedAt: null,
+      appVersion: null,
+      batteryLevel: null,
+      offlineMode: null,
+    };
+  }
+
+  it('prefers assignedId whenever present, regardless of session/mission order', () => {
+    expect(
+      selectMissionId({
+        assignedId: 'real-mission',
+        missions: [demo, real],
+        sessions: [sessionFor('demo-mission', '2026-08-04T10:00:00.000Z')],
+      })
+    ).toBe('real-mission');
+  });
+
+  it('falls back to the most recent session whose mission still exists, ignoring array order', () => {
+    // `demo` is missions[0] here — the exact SQLite-insertion-order scenario
+    // found on the test device (memory.md) — but the last session pointed
+    // at the real mission, so that should win.
+    expect(
+      selectMissionId({
+        assignedId: null,
+        missions: [demo, real],
+        sessions: [
+          sessionFor('demo-mission', '2026-08-01T10:00:00.000Z'),
+          sessionFor('real-mission', '2026-08-03T10:00:00.000Z'),
+        ],
+      })
+    ).toBe('real-mission');
+  });
+
+  it('ignores a session pointing at a mission that no longer exists', () => {
+    expect(
+      selectMissionId({
+        assignedId: null,
+        missions: [demo],
+        sessions: [sessionFor('deleted-mission', '2026-08-04T10:00:00.000Z')],
+      })
+    ).toBe('demo-mission');
+  });
+
+  it('falls back to missions[0] when there are no usable sessions', () => {
+    expect(selectMissionId({ assignedId: null, missions: [demo, real], sessions: [] })).toBe('demo-mission');
+  });
+
+  it('returns null when there is nothing to select', () => {
+    expect(selectMissionId({ assignedId: null, missions: [], sessions: [] })).toBeNull();
+  });
+});
+
+describe('MissionContext — mission selection with a pre-existing demo + real mission', () => {
+  it('on load without a fresh assignment, prefers the last real session over the arbitrarily-first demo mission', async () => {
+    const db = createFakeDb();
+    const missionRepo = createMissionRepository(db);
+    const itemRepo = createMissionItemRepository(db);
+    const sessionRepo = createOperatorSessionRepository(db);
+
+    const now = '2026-08-01T00:00:00.000Z';
+    const demoMission: Mission = {
+      id: 'demo-mission',
+      date: '2026-08-01',
+      route: 'Route 12A',
+      operator: 'Opérateur Démo',
+      equipment: 'Kubota 01',
+      status: 'READY',
+      scheduledStartAt: null,
+      actualStartAt: null,
+      actualEndAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const realMission: Mission = { ...demoMission, id: 'real-mission', operator: null, equipment: 'Souffleuse 04' };
+    // Insertion order matters for this test (the fake DB's getAllAsync
+    // preserves it, see testFakeDb.ts) — demo inserted first reproduces the
+    // exact device scenario from memory.md (demo seeded before the real
+    // account/mission existed).
+    await missionRepo.upsert(demoMission);
+    await missionRepo.upsert(realMission);
+    await itemRepo.upsert({
+      id: 'real-item-1',
+      missionId: 'real-mission',
+      contractId: null,
+      ordre: 1,
+      address: '148 Rue Scott',
+      latitude: null,
+      longitude: null,
+      detectionRadiusMeters: null,
+      status: 'EN_ROUTE',
+      enRouteAt: now,
+      enApprocheAt: null,
+      enCoursAt: null,
+      termineeAt: null,
+      travelTimeSeconds: null,
+      interventionTimeSeconds: null,
+      notes: null,
+      problemCode: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    // A previous session actually worked the real mission — the signal
+    // `selectMissionId` should trust over row order once `assigned` is null
+    // this load (no employeeId below, mirroring an offline/logged-out cold
+    // start).
+    await sessionRepo.upsert({
+      id: 'previous-session',
+      userId: null,
+      missionId: 'real-mission',
+      openedAt: '2026-08-03T10:00:00.000Z',
+      closedAt: '2026-08-03T12:00:00.000Z',
+      appVersion: null,
+      batteryLevel: null,
+      offlineMode: null,
+    });
+
+    const { result } = renderHook(() => useMissionContext(), {
+      wrapper: ({ children }) => (
+        <MissionProvider
+          getDbOverride={() => Promise.resolve(db)}
+          syncTransportOverride={() => createFakeTransport()}
+          speakerOverride={() => createFakeSpeaker()}
+          locationProviderOverride={() => createFakeLocationProvider()}
+          networkSensorOverride={() => createFakeNetworkSensor()}
+          detectionRadiiStorageOverride={() => createFakeDetectionRadiiStorage()}
+        >
+          {children}
+        </MissionProvider>
+      ),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.mission?.id).toBe('real-mission');
   });
 });

@@ -1432,6 +1432,42 @@ implicite mais sans risque d'oubli, vs. un geste supplémentaire à chaque test)
   `MissionContext`, la couche la plus proche de l'appelant du capteur, sans toucher les deux
   moteurs/intégrations qui n'ont pas besoin de savoir qu'ils sont temporairement ignorés.
 
+## Sélection de mission active déterministe (2026-08-04)
+
+Résout le suivi ouvert depuis le câblage Supabase (Sprint 013-014, `tasks.md`) : la Mission démo
+(seedée par `seedDemoMissionIfEmpty` quand la base est vide) et une vraie Mission Supabase peuvent
+coexister en local — constaté sur l'appareil de test, la démo avait été seedée avant que le vrai
+compte/mission existe. Le fix Sprint 017 partie 1/N (`assigned?.id ?? missions[0]?.id`) résolvait
+déjà le cas nominal mais retombait sur `missions[0]` (ordre SQLite non garanti) dès que `assigned`
+était `null` — pas seulement « pas d'`employeeId` », aussi un **échec réseau transitoire alors
+qu'une vraie mission avait déjà été sélectionnée une session précédente**, un cas bien réel sur le
+terrain (`docs/07` local-first).
+
+- **`selectMissionId({assignedId, missions, sessions})` (nouvelle, pure, exportée depuis
+  `MissionContext.tsx`, même statut que `deriveActiveAndNext`)** : `assignedId` > mission de la
+  **session opérateur la plus récente** (`operator_sessions`, déjà persistée à chaque montage)
+  encore existante parmi `missions` > `missions[0]` > `null`. Le choix de la session la plus
+  récente plutôt que l'ordre du tableau préserve « ce que l'opérateur regardait réellement la
+  dernière fois » — un signal qui existe déjà (chaque montage écrit une session), pas une nouvelle
+  donnée à inventer.
+- **`load()`** : `existingSessions` lu via `Promise.all` **avant** l'upsert de la propre session de
+  ce montage (sinon elle se « découvrirait » elle-même, de toute façon sans effet puisqu'elle n'a
+  pas encore de `missionId` à ce stade).
+- **`refreshAssignment()`** : `assigned?.id ?? mission?.id ?? selectMissionId(...)` — le `mission?.id`
+  déjà en mémoire (affiché à l'écran) garde la priorité sur l'historique de session (pas de raison
+  de sauter ailleurs juste parce que ce rafraîchissement n'a rien trouvé de neuf), mais partage
+  désormais la même fonction de repli que `load()` plutôt que deux logiques légèrement différentes
+  qui auraient pu diverger avec le temps.
+- **Délibérément non fait** : aucune suppression/nettoyage automatique de la Mission démo une fois
+  une vraie mission confirmée. Même position que le refus de supprimer la résidence « 148 Rue
+  Scott » (2026-08-03, plus haut dans ce fichier) : suppression de données réelles jamais faite
+  sans décision produit explicite, même si celle-ci est « juste » une mission de démo — le
+  principe (ne jamais décider seul de ce qui est sûr à effacer) prime sur le cas particulier.
+- **Test d'intégration reproduit exactement le scénario du device** : insertion démo puis vraie
+  mission (le faux `Db` de test préserve l'ordre d'insertion via `Map.values()`,
+  `tests/testFakeDb.ts`), une session antérieure pointant vers la vraie mission, rendu sans
+  `employeeId` — confirme que la sélection ne retombe pas sur `missions[0]` (la démo).
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,
