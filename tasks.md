@@ -535,7 +535,8 @@
   `DevScreen` (États réels, Seuils GPS), `dev.setNetworkOverride` → `RECOVERING` observé en direct
   (jamais `ONLINE` immédiat). Aucun crash sur toute la session.
   - [x] **Corrigé — décision produit prise avec le propriétaire** (branche
-    `sprint-dev-gps-vs-real-sensor`, 2026-08-04) : `dev.gps` (simulateur) et le capteur GPS réel
+    `sprint-dev-gps-vs-real-sensor`, 2026-08-04, PR :
+    https://github.com/groupe-reca/reca-operateur/pull/8) : `dev.gps` (simulateur) et le capteur GPS réel
     tournaient simultanément sur le même GPS Engine dès qu'une mission était chargée, rien ne les
     rendait mutuellement exclusifs (résidence active mission #9 à ~295 m de la position réelle,
     juste au-dessus du rayon d'approche 250 m — le vrai fix invalidait la candidature de
