@@ -10,6 +10,48 @@ _Aucun plan actif pour le moment._
 
 ## Archivé
 
+### ✅ Icône/splash officiels (branche `sprint-app-icon-splash`, 2026-08-04)
+
+**Objectif** : suivi ouvert depuis le Sprint 001 (`tasks.md`) — `assets/icon.png`,
+`android-icon-{foreground,background,monochrome}.png`, `favicon.png`, `splash-icon.png` étaient
+tous les placeholders par défaut du template Expo (chevron bleu « A », cercles concentriques),
+jamais remplacés. Requis avant tout build de distribution — aucun faux logo n'a jamais été
+utilisé en attendant (interdit `CLAUDE.md`).
+
+**Design** : les 2 SVG officiels (`assets/logo-{clair,sombre}.svg`) sont le lockup horizontal
+complet « RÉCA GROUPE » (texte + flocon), pas un mark carré directement utilisable comme icône
+d'app. Le premier `<path fill="#e63947">` du SVG est le flocon de neige seul (bbox calculée par
+script : x[-20.9, 5872.6], y[1872.7, 8620.8]) — cohérent avec le métier (déneigement) et déjà la
+seule forme du SVG qui soit géométriquement adaptée à un cadre carré. Extrait dans un SVG autonome
+(viewBox recentré sur ce path) puis rasterisé (`@resvg/resvg-js`, installé temporairement en
+`--no-save --no-package-lock`, jamais ajouté à `package.json` — outil de génération d'assets
+one-shot, pas une dépendance runtime) :
+- `icon.png` (1024×1024) : flocon rouge sur fond `#0B1020` (couleur déjà utilisée partout dans
+  `app.json`), padding ~1.3× la bbox.
+- `android-icon-foreground.png`/`android-icon-monochrome.png` (1024×1024, transparents) : padding
+  ~1.9× la bbox — zone de sécurité Android (le lanceur masque/zoome le calque foreground selon la
+  forme choisie par l'utilisateur, un flocon touchant les bords serait rogné). `monochrome` = même
+  silhouette en blanc uni (calque thématisé Android 13+).
+- `android-icon-background.png` (1024×1024) : couleur plate `#0B1020`, aucune forme.
+- `favicon.png` : même composition que `icon.png`, 196×196.
+- `splash-icon.png` (1024×1024, transparent, padding ~1.6×) : jusqu'ici généré mais **jamais
+  référencé** dans `app.json` (le plugin `expo-splash-screen` était déclaré sans options) — ajout
+  d'une config `{image, imageWidth: 220, resizeMode: "contain", backgroundColor: "#0B1020"}` pour
+  qu'il soit enfin utilisé.
+
+**Hors scope** : régénération de `tractor.png`/`map-night.svg` (déjà les assets officiels, pas des
+placeholders) ; conversion de `logo-clair.svg` en variante (les composants React continuent de
+consommer directement les SVG via `react-native-svg-transformer`, aucune raison de les rasteriser).
+
+**Vérification** : `node -e` inspection visuelle de chaque PNG généré (flocon centré, couleurs de
+marque, transparence confirmée par `file` — RGBA) ; `npx expo config` résout la config sans erreur ;
+`tsc`/`eslint`/`jest` (191/191) verts ; `expo-doctor` 19/20 (dérive `react-native-gesture-handler`
+préexistante, sans rapport). **Non vérifié visuellement sur device** : nécessite un nouveau
+`expo prebuild`/build natif sur le laptop du propriétaire pour voir l'icône réelle sur l'appareil
+(changement d'assets seul, aucune nouvelle dépendance native).
+
+## Archivé
+
 ### ✅ Sélection de mission active déterministe (branche `sprint-mission-selection`, 2026-08-04)
 
 **Objectif** : suivi ouvert depuis Sprint 013-014 (`tasks.md`) — la Mission démo (seedée quand la

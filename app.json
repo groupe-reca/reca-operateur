@@ -27,7 +27,15 @@
     },
     "plugins": [
       "expo-font",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#0B1020"
+        }
+      ],
       "expo-asset",
       "@rnmapbox/maps",
       "expo-sqlite",

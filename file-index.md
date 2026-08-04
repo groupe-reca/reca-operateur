@@ -12,7 +12,10 @@
   le jeton de téléchargement natif n'y figure **pas**, lu directement par Gradle via
   `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`, voir `.env.example`), `expo-location` (2026-08-03, Sprint 017
   partie 2/N — chaîne de permission FR `locationWhenInUsePermission`, foreground uniquement),
-  `./plugins/withGradleJdk17` (2026-08-02), `./plugins/withDevSingleAbi` (2026-08-02).
+  `expo-splash-screen` (2026-08-04, Sprint « Icône/splash officiels » — `image`/`imageWidth: 220`/
+  `resizeMode: "contain"`/`backgroundColor: "#0B1020"`, jusqu'ici déclaré sans options donc sans
+  effet visuel réel), `./plugins/withGradleJdk17` (2026-08-02), `./plugins/withDevSingleAbi`
+  (2026-08-02).
 - `plugins/withGradleJdk17.js` (2026-08-02) — plugin de config Expo, réécrit
   `android/gradle.properties`/`gradle-daemon-jvm.properties` à chaque `expo prebuild` pour forcer
   Gradle à utiliser le JDK 17 de `JAVA_HOME` (contourne un bug AGP/Prefab avec JDK 22+, voir
@@ -428,11 +431,18 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
 
 ## Assets officiels (`assets/`)
 
-- `logo-clair.svg`, `logo-sombre.svg` — logo officiel (ne jamais redessiner).
+- `logo-clair.svg`, `logo-sombre.svg` — logo officiel (ne jamais redessiner). Lockup horizontal
+  complet « RÉCA GROUPE » (texte + flocon) — consommé directement par les composants React via
+  `react-native-svg-transformer`, jamais rasterisé pour l'UI elle-même.
 - `tractor.png` — tracteur vue de dessus (marqueur fixe de la carte).
 - `map-night.svg` — référence de style carte nuit.
-- `icon.png`, `splash-icon.png`, `android-icon-*.png`, `favicon.png` — **placeholders Expo**
-  (à remplacer par les vrais visuels avant distribution).
+- `icon.png`, `splash-icon.png`, `android-icon-{foreground,background,monochrome}.png`,
+  `favicon.png` (Sprint « Icône/splash officiels », 2026-08-04) — générés à partir du flocon de
+  neige seul (premier `<path fill="#e63947">` de `logo-sombre.svg`, extrait/rasterisé via
+  `@resvg/resvg-js`, jamais ajouté aux dépendances du projet) sur fond de marque `#0B1020` —
+  remplacent les placeholders Expo par défaut (chevron bleu, cercles concentriques) restés en
+  place depuis le Sprint 001. `splash-icon.png` enfin référencé par le plugin
+  `expo-splash-screen` dans `app.json` (voir plus bas).
 
 ## Tests & scripts
 
