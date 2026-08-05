@@ -1468,6 +1468,37 @@ terrain (`docs/07` local-first).
   `tests/testFakeDb.ts`), une session antérieure pointant vers la vraie mission, rendu sans
   `employeeId` — confirme que la sélection ne retombe pas sur `missions[0]` (la démo).
 
+## Icône/splash officiels (2026-08-04)
+
+Résout le suivi ouvert depuis le Sprint 001 : `assets/icon.png`,
+`android-icon-{foreground,background,monochrome}.png`, `favicon.png`, `splash-icon.png` étaient
+tous les placeholders par défaut du template Expo blank-typescript (chevron bleu « A », cercles
+concentriques) — jamais un faux logo utilisé en attendant (interdit `CLAUDE.md`), juste jamais
+remplacés.
+
+- **Les SVG officiels (`assets/logo-{clair,sombre}.svg`) sont un lockup horizontal complet
+  « RÉCA GROUPE »** (texte + mark), pas une icône carrée directement exploitable. Le premier
+  `<path fill="#e63947">` du SVG est **le flocon de neige seul** — cohérent avec le métier
+  (déneigement) et la seule forme du fichier géométriquement adaptée à un cadre carré. Bbox
+  calculée par script (pas devinée) : x[-20.9, 5872.6], y[1872.7, 8620.8].
+- **`@resvg/resvg-js` installé temporairement** (`npm install --no-save --no-package-lock`) pour
+  rasteriser — jamais ajouté à `package.json`/`package-lock.json`, retiré de `node_modules` après
+  usage (outil de génération d'assets one-shot, pas une dépendance runtime de l'app). Aucun outil
+  de conversion SVG→PNG (`rsvg-convert`/`inkscape`/`imagemagick`) n'était disponible sur ce VPS.
+- **Padding différent selon l'usage** : `icon.png`/`favicon.png` ~1.3× la bbox (icône plate,
+  affichée telle quelle) ; `android-icon-foreground.png`/`android-icon-monochrome.png` ~1.9× la
+  bbox (zone de sécurité adaptative Android — le lanceur masque/zoome le calque foreground selon
+  la forme choisie par l'utilisateur, un flocon touchant les bords serait rogné) ;
+  `splash-icon.png` ~1.6× (compromis, taille d'écran de démarrage).
+- **`splash-icon.png` existait déjà comme fichier mais n'était référencé nulle part** — le plugin
+  `expo-splash-screen` dans `app.json` était déclaré sans options (`"expo-splash-screen"` simple
+  string), donc sans effet visuel réel au-delà de l'infrastructure minimale. Ajout d'une config
+  `{image: "./assets/splash-icon.png", imageWidth: 220, resizeMode: "contain", backgroundColor:
+  "#0B1020"}` pour qu'il soit enfin utilisé — premier écran de démarrage réellement de marque.
+- **Non vérifié visuellement sur device** : nécessite un nouveau `expo prebuild`/build natif sur le
+  laptop du propriétaire — changement d'assets seul, aucune nouvelle dépendance native, donc pas de
+  piège de build attendu (contrairement à Voice/gesture-handler/async-storage/location/netinfo).
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,

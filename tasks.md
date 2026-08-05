@@ -717,9 +717,19 @@
 
 ## Suivi / limitations déclarées
 
-- **Icône/splash = placeholders Expo** (SVG officiels non convertis en PNG 1024) → tâche de
-  suivi, à faire avant un vrai build de distribution. Aucun faux logo intégré entre-temps.
-  (Sprint 001)
+- [x] **Icône/splash officiels** (branche `sprint-app-icon-splash`, 2026-08-04, PR :
+  https://github.com/groupe-reca/reca-operateur/pull/10) — résolu.
+  `assets/icon.png`/`android-icon-{foreground,background,monochrome}.png`/`favicon.png`/
+  `splash-icon.png` étaient tous les placeholders par défaut du template Expo (chevron bleu « A »,
+  cercles concentriques), jamais remplacés depuis le Sprint 001. Régénérés depuis le flocon de
+  neige rouge (`#e63947`) des SVG officiels (`assets/logo-{clair,sombre}.svg` — le lockup complet
+  « RÉCA GROUPE », dont seul le flocon est géométriquement adapté à un cadre carré), sur fond de
+  marque `#0B1020`, avec le padding de zone de sécurité adéquat pour le calque Android adaptatif.
+  `app.json` : plugin `expo-splash-screen` enfin configuré avec `image`/`imageWidth`/
+  `backgroundColor` — `splash-icon.png` existait déjà comme fichier mais n'était référencé nulle
+  part. Vérifié : `tsc`/`eslint`/`jest` (191/191)/`npx expo config` propres, `expo-doctor` 19/20
+  (dérive `react-native-gesture-handler` préexistante, sans rapport). **Non vérifié visuellement
+  sur device** : nécessite un nouveau `expo prebuild`/build natif sur le laptop du propriétaire.
 - **Aucun test runner « natif »** au-delà de jest (unitaire) : les tests moteurs viendront avec
   les moteurs (State Machine/GPS en priorité, `docs/10`). (Sprint 001)
 - **`BottomSheet` sans gestes de glissement** (coquille + snap en props seulement) : le
