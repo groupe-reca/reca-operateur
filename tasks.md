@@ -573,7 +573,8 @@
   tests `gpsEngine.test.ts` + 4 nouveaux tests d'intégration `missionContext.test.tsx` + 3 nouveaux
   `settingsScreen.test.tsx`). **Non vérifié sur device** : aucune dépendance native ajoutée, mais
   pas testé physiquement sur l'appareil cette passe.
-- [x] **Build release autonome pour tests terrain** (Sprint 020, 2026-08-04) — demande explicite
+- [x] **Build release autonome pour tests terrain** (Sprint 020, 2026-08-04, PR :
+  https://github.com/groupe-reca/reca-operateur/pull/11) — demande explicite
   du propriétaire : l'app doit fonctionner **sans son ordinateur** pendant les tests terrain. Les
   builds précédents étaient tous des builds **debug** (`expo run:android`/`gradlew installDebug`),
   dont le JS est servi en direct par Metro (`adb reverse tcp:8081`) — dépendants d'une machine
