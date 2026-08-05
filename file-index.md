@@ -5,7 +5,8 @@
 
 ## Configuration & points d'entrée
 
-- `package.json` — dépendances et scripts (`start`/`android`/`ios`/`web`/`prebuild`/
+- `package.json` — dépendances et scripts (`start`/`android`/`android:release` (Sprint 020,
+  2026-08-04 — build release autonome pour tests terrain, voir README)/`ios`/`web`/`prebuild`/
   `typecheck`/`lint`/`test`). Preset jest `jest-expo`.
 - `app.json` — config Expo (nom « RÉCA Opérateur », portrait, thème sombre, `scheme`,
   ids `ca.groupereca.recaoperateur`, icônes, plugins dont `@rnmapbox/maps` depuis Sprint 005-006 —

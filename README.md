@@ -22,7 +22,8 @@ Expo SDK 57 · React Native 0.86 · React 19.2 · TypeScript 6 (strict) · `@rnm
 ```bash
 npm install         # dépendances
 npm run start       # serveur Expo (QR → app Expo Go)
-npm run android     # build + lancement Android
+npm run android     # build debug + lancement Android (JS servi par Metro, nécessite l'ordinateur)
+npm run android:release  # build release + lancement (JS embarqué dans l'APK, autonome)
 npm run prebuild    # génère le dossier natif android/
 npm run typecheck   # tsc --noEmit
 npm run lint        # eslint
@@ -41,6 +42,25 @@ Le code est développé sur le serveur (typecheck / lint / tests headless). Pour
    (ou `npx expo run:android`).
 
 Les clés (Mapbox, Supabase) passent par des variables d'environnement / EAS — **jamais** commitées.
+
+## Build release (tests terrain — app autonome, sans ordinateur)
+
+Un build **debug** (`npm run android`) sert son JS en direct par Metro (`adb reverse tcp:8081`) —
+l'app cesse de fonctionner sans une connexion active à l'ordinateur qui a lancé `expo start`. Pour
+les tests terrain, où l'app doit tourner seule sur le téléphone de l'opérateur, il faut un build
+**release** : le JS est compilé et embarqué directement dans l'APK à la compilation, aucune
+dépendance à Metro/l'ordinateur une fois installé.
+
+```bash
+cd android && ./gradlew assembleRelease   # ou : npm run android:release
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+```
+
+Signé avec le keystore de debug généré par `expo prebuild` (suffisant pour un test terrain interne
+— **pas** pour une distribution Play Store, qui nécessiterait un vrai keystore de production via
+EAS). `.env.local` doit être présent au moment du build (`EXPO_PUBLIC_*`/
+`RNMAPBOX_MAPS_DOWNLOAD_TOKEN`) — ces valeurs sont embarquées dans le bundle, pas lues à
+l'exécution, donc un `.env.local` changé après coup nécessite un nouveau build.
 
 ## Structure
 
