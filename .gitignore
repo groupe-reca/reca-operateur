@@ -13,6 +13,9 @@ expo-env.d.ts
 /ios
 /android
 .kotlin/
+
+# Built APKs (large binaries, never source — regenerate via `npm run android:release`)
+/apk/
 *.orig.*
 *.jks
 *.p8
