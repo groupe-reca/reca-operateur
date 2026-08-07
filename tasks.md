@@ -573,7 +573,25 @@
   tests `gpsEngine.test.ts` + 4 nouveaux tests d'intégration `missionContext.test.tsx` + 3 nouveaux
   `settingsScreen.test.tsx`). **Non vérifié sur device** : aucune dépendance native ajoutée, mais
   pas testé physiquement sur l'appareil cette passe.
-- [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15).
+- [x] **Build release autonome pour tests terrain** (Sprint 020, 2026-08-04, PR :
+  https://github.com/groupe-reca/reca-operateur/pull/11) — demande explicite
+  du propriétaire : l'app doit fonctionner **sans son ordinateur** pendant les tests terrain. Les
+  builds précédents étaient tous des builds **debug** (`expo run:android`/`gradlew installDebug`),
+  dont le JS est servi en direct par Metro (`adb reverse tcp:8081`) — dépendants d'une machine
+  connectée en permanence. Build **release** (`gradlew assembleRelease`) : JS compilé et embarqué
+  dans l'APK à la compilation, aucune dépendance à Metro/l'ordinateur une fois installé. Signé avec
+  le keystore de debug généré par `expo prebuild` (suffisant pour un test terrain interne, pas pour
+  Play Store — un vrai keystore de production resterait un sprint EAS futur explicite). Obstacle
+  résolu : `android/local.properties` manquait `sdk.dir` dans ce shell — écrit manuellement après
+  avoir localisé le SDK Android sur le disque. Nouveau script `npm run android:release` + section
+  README. **Vérifié en direct sur l'appareil connecté** (TECNO KL4) : APK installé, `adb
+  reverse --remove-all` confirmé vide, app relancée et fonctionnelle entièrement déconnectée de ce
+  VPS — carte Mapbox réelle, Mission #9 réelle, nouvelle icône flocon, écran Paramètres complet
+  (Détection GPS 250/30), aucun crash sur `adb logcat`. `tsc`/`eslint`/`jest` (191/191) verts.
+- [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15, reste à
+  faire) : ce qui précède livre l'**infrastructure** du build autonome ; la conduite réelle des
+  tests terrain (retours opérateurs, stabilisation en conditions réelles, pilote, production) reste
+  à planifier avec le propriétaire.
 
 ## À vérifier
 

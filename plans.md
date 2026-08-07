@@ -10,6 +10,61 @@ _Aucun plan actif pour le moment._
 
 ## Archivé
 
+### ✅ Build release autonome pour tests terrain (Sprint 020, 2026-08-04)
+
+**Objectif** : demande explicite du propriétaire — l'app doit fonctionner **sans son ordinateur**
+pour les tests terrain. Jusqu'ici, chaque test sur device utilisait un **build debug**
+(`expo run:android` / `gradlew installDebug`), dont le JS est servi en direct par Metro via
+`adb reverse tcp:8081` — dépend en permanence d'une machine connectée. Un **build release** intègre
+le bundle JS directement dans l'APK à la compilation (tâche Gradle `bundleReleaseJsAndAssets`) :
+une fois installé, l'app n'a plus besoin de Metro/ordinateur pour fonctionner.
+
+**Constat** : `android/app/build.gradle` (généré par `expo prebuild`, jamais édité à la main) a déjà
+un `buildTypes.release` fonctionnel, signé avec `signingConfigs.debug` (keystore de debug standard
+Expo/RN — suffisant pour un test terrain interne, **pas** pour une distribution Play Store, qui
+nécessiterait un vrai keystore de production via EAS, hors scope ici). `.env.local` contient déjà
+les 4 variables `EXPO_PUBLIC_*`/`RNMAPBOX_MAPS_DOWNLOAD_TOKEN` nécessaires au moment du build
+(embarquées dans le bundle JS release, pas lues à l'exécution). Un appareil est actuellement
+connecté à ce VPS (`adb devices`).
+
+**Design** :
+1. `cd android && ./gradlew assembleRelease` — build local, aucun changement de code natif requis
+   (signing/minify déjà configurés par le scaffold Expo).
+2. `adb install -r android/app/build/outputs/apk/release/app-release.apk`.
+3. `adb reverse --remove tcp:8081` (retire tout pont Metro existant) puis lancement de l'app —
+   vérifie qu'aucune erreur « Unable to load script »/Metro n'apparaît, que la carte/GPS/mission se
+   chargent normalement, entièrement déconnecté de ce VPS.
+4. Test de fumée autonome (`adb shell input tap`/`uiautomator dump`, même méthode que le Sprint
+   « Vérification autonome sur device » — jamais de coordonnées devinées) : ouverture de l'app,
+   navigation de base, pas de crash sur `adb logcat`.
+
+**Hors scope** : vrai keystore de production/Play Store (EAS Build, nécessite un compte/decision du
+propriétaire) ; distribution OTA (`expo-updates`, aucune demande) ; build iOS (aucun device iOS
+disponible).
+
+**Vérification** : APK installé et lancé avec succès sans connexion Metro active ; `adb logcat` sans
+crash pendant un test de fumée de quelques minutes.
+
+**Réalisé conformément au plan**, avec un obstacle non prévu : `android/local.properties` (fichier
+gitignored, généré par `expo prebuild`) manquait `sdk.dir` dans le shell utilisé pour ce build —
+`ANDROID_HOME`/`ANDROID_SDK_ROOT` n'étaient pas non plus exportés dans ce contexte. Résolu en
+écrivant `sdk.dir=C:/Users/Francis/AppData/Local/Android/Sdk` (SDK localisé via une recherche de
+`platform-tools`/`platforms` sur le disque, pas deviné). Premier `assembleRelease` ~20 min (aucun
+cache release préexistant, contrairement aux builds debug déjà rodés ce trimestre) — même piège de
+timeout d'outil que documenté précédemment (`memory.md` : le daemon Gradle continue en arrière-plan
+malgré la notification « killed », vérifié via `gradlew --status`/présence du fichier APK plutôt que
+la notification seule). APK installé (`adb install -r`), `adb reverse --remove-all` confirmé vide,
+app relancée et testée en direct (capture d'écran + `uiautomator`) : carte Mapbox réelle, Mission #9
+réelle (148 Rue Scott, à 293 m), nouvelle icône flocon dans l'en-tête, écran Paramètres complet
+(Compte/Voix/Détection GPS 250-30/Thème/Version) — **« Mode développement » correctement absent**
+(`__DEV__` faux en release, comportement voulu, pas un bug). Aucun crash sur `adb logcat` (recherche
+`FATAL EXCEPTION`/`AndroidRuntime`/`Unable to load script`, vide). Nouveau script
+`npm run android:release` + section README dédiée (limite assumée : keystore de debug, suffisant
+pour un test terrain interne, pas pour Play Store — un vrai keystore de production resterait un
+sprint EAS futur explicite si une distribution publique est un jour requise).
+
+## Archivé
+
 ### ✅ Icône/splash officiels (branche `sprint-app-icon-splash`, 2026-08-04)
 
 **Objectif** : suivi ouvert depuis le Sprint 001 (`tasks.md`) — `assets/icon.png`,

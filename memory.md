@@ -1499,6 +1499,54 @@ remplacés.
   laptop du propriétaire — changement d'assets seul, aucune nouvelle dépendance native, donc pas de
   piège de build attendu (contrairement à Voice/gesture-handler/async-storage/location/netinfo).
 
+## Build release autonome pour tests terrain (2026-08-04)
+
+Demande explicite du propriétaire : « L'application doit pouvoir fonctionner sans mon ordinateur »
+pour les tests terrain. Jusqu'ici, **tous** les builds testés sur device (session entière) étaient
+des builds **debug** — le JS n'est jamais embarqué, Metro le sert en direct via `adb reverse
+tcp:8081` ; sans ce pont actif (ordinateur allumé, `expo start` lancé, câble/réseau), l'app affiche
+« Unable to load script » et ne démarre pas. Un test terrain réel (opérateur seul avec son
+téléphone, pas de laptop à proximité) était donc impossible avec ce qui existait.
+
+- **Solution = build `release`, pas une nouvelle fonctionnalité** : `android/app/build.gradle`
+  (généré par `expo prebuild`, jamais édité à la main) a déjà un `buildTypes.release` prêt à
+  l'emploi depuis le tout premier `prebuild` — signé avec `signingConfigs.debug` (keystore de debug
+  standard Expo/RN). `gradlew assembleRelease` déclenche la tâche `bundleReleaseJsAndAssets` qui
+  appelle `expo export:embed` (configuré dans le bloc `react {}` de `build.gradle`,
+  `bundleCommand = "export:embed"`) — compile le JS une fois et l'embarque dans l'APK. Aucun code
+  natif à écrire, juste la bonne commande de build.
+- **`.env.local` lu au moment du build, pas à l'exécution** — les 4 `EXPO_PUBLIC_*`/
+  `RNMAPBOX_MAPS_DOWNLOAD_TOKEN` sont inlinés dans le bundle JS par Metro/Expo CLI (mécanisme déjà
+  en place depuis le Sprint 005-006 pour Mapbox, rien de nouveau) — donc un changement de
+  `.env.local` après coup exige un nouveau build release, contrairement au debug qui relit
+  l'environnement à chaque `expo start`.
+- **Obstacle rencontré, pas un vrai bug** : `android/local.properties` (fichier gitignored,
+  généré par `expo prebuild`, jamais présent avant ce build dans ce shell) manquait `sdk.dir`, et
+  ni `ANDROID_HOME` ni `ANDROID_SDK_ROOT` n'étaient exportés dans ce contexte de shell — le SDK
+  était bien installé (`C:\Users\Francis\AppData\Local\Android\Sdk`, confirmé en cherchant
+  `platform-tools`/`platforms` sur le disque, jamais deviné), juste jamais déclaré à Gradle ici.
+  Écrit manuellement `sdk.dir=C:/Users/Francis/AppData/Local/Android/Sdk` (barres obliques, pas de
+  backslash à échapper).
+- **Premier `assembleRelease` ~20 min** (aucun cache release préexistant, contrairement aux dizaines
+  de builds debug déjà rodés cette session) — a de nouveau déclenché le piège de timeout d'outil déjà
+  documenté (voir plus haut, Sprint « Builder l'app en dev build ») : la notification « killed »
+  n'implique pas que le daemon Gradle s'est arrêté — vérifié via `gradlew --status` (`BUSY`) et
+  l'apparition du fichier APK, pas la notification seule.
+- **Vérifié en direct, entièrement déconnecté** : `adb reverse --remove-all` confirmé vide avant de
+  relancer l'app (aucun pont Metro actif possible), capture d'écran + `uiautomator` montrent la
+  carte Mapbox réelle, la Mission #9 réelle (148 Rue Scott, à 293 m), la nouvelle icône flocon dans
+  l'en-tête, et l'écran Paramètres complet (Voix/Détection GPS 250-30/Thème/Version) — **« Mode
+  développement » correctement absent** (`__DEV__` faux en release, comportement voulu, pas un
+  oubli). Aucun crash sur `adb logcat` (`FATAL EXCEPTION`/`AndroidRuntime`/`Unable to load script`
+  tous vides).
+- **Limite assumée** : keystore de debug — suffisant pour un test terrain interne (installation
+  directe via `adb install`/partage de l'APK), **pas** pour une distribution Play Store, qui
+  nécessiterait un vrai keystore de production géré via EAS (compte/décision du propriétaire, hors
+  scope tant que non demandé).
+- Nouveau script `npm run android:release` (`expo run:android --variant release`) + section README
+  dédiée « Build release (tests terrain) » documentant la commande manuelle
+  (`gradlew assembleRelease` + `adb install -r`) pour reproduire sans repasser par ce contexte.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,
