@@ -606,6 +606,33 @@
   depuis ce VPS** : changement JS pur mais l'APK installé sur le TECNO KL4 de test est un build
   **release** (JS figé dans l'APK, Sprint 020) — nécessite un nouveau
   `gradlew assembleRelease`/`adb install -r` sur le laptop du propriétaire pour être visible.
+- [x] **Icône de navigation standard + chemin suggéré jusqu'à la première résidence** (2026-08-08,
+  demande explicite du propriétaire avant le prochain réassemblage laptop, plan dans `plans.md`
+  archivé). Deux changements indépendants au Map Engine :
+  1. **Icône du tracteur → flèche de navigation** : l'illustration Kubota vue du dessus
+     (`assets/tractor.png`, exigée jusqu'ici par `docs/05`) jugée « trop bébé » — remplacée par
+     `NavigationArrow.tsx` (renommé de `FixedTractor.tsx`, `git mv`), une flèche pleine
+     `lucide-react-native` (`Navigation2`, même forme que les puks Google Maps/Waze), couleur
+     `colors.navigation` (déjà celle du chemin suggéré — cohérence visuelle). Comportement
+     position/rotation inchangé (overlay écran-fixe, cap validé jamais brut). `TractorMarker.tsx`/
+     `TRACTOR_ANCHOR_FRACTION_FROM_TOP` conservés (nom toujours exact). `docs/05-Map-Engine.md`
+     « Icône du tracteur » réécrite (asset PNG conservé sur disque, juste inutilisé — même principe
+     que « jamais de suppression de donnée sans confirmation explicite »).
+  2. **Chemin suggéré jusqu'à la première résidence** : le mécanisme (Directions API Mapbox + repli
+     ligne droite) existait déjà en entier depuis le Sprint 005-006 et était déjà branché avec de
+     vraies données — **pas une nouvelle fonctionnalité, un bug**. `routeWaypoints`
+     (`deriveMissionScreenState.ts`) n'utilisait que `residences` (`nextMissionItems`), qui exclut
+     **délibérément** l'item actif (`deriveActiveAndNext`) — le chemin sautait donc directement à la
+     2e résidence, jamais tracé vers la première. Corrigé : la résidence active/en cours est
+     désormais ajoutée en tête de `routeWaypoints` (juste après la position live) quand ses
+     coordonnées sont connues, plafonné à 5 résidences au total (actif + suivantes), fidèle au
+     chiffre documenté par `docs/05` « Chemin suggéré ». `residences` (repères/badges « à venir »)
+     inchangé — aucune régression visuelle sur les marqueurs. Vérifié : `tsc`/`eslint` propres,
+     `jest` 195/195 verts (20 suites, +3 tests dans `tests/deriveMissionScreenState.test.ts`),
+     `expo-doctor` 19/20 (dérive pré-existante `expo`/`expo-asset`/`expo-location`, sans rapport).
+     **Non vérifiable sur device depuis ce VPS** : changement JS pur, même limite build release que
+     l'entrée précédente — nécessite le prochain `gradlew assembleRelease`/`adb install -r` du
+     propriétaire.
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15, reste à
   faire) : ce qui précède livre l'**infrastructure** du build autonome ; la conduite réelle des
   tests terrain (retours opérateurs, stabilisation en conditions réelles, pilote, production) reste

@@ -100,6 +100,23 @@ export function deriveMissionScreenState(
     .slice(0, 5)
     .map((item, i) => ({ n: item.ordre, rank: (i + 1) as 1 | 2 | 3 | 4 | 5, coordinate: [item.longitude, item.latitude] as [number, number] }));
 
+  // Bug found 2026-08-08 (propriétaire, en direct sur device): `residences`
+  // above (the map's "à venir" badges) deliberately excludes the active/
+  // highlighted item (`deriveActiveAndNext`) — so `routeWaypoints` used to
+  // skip straight to the *second* residence, never drawing a suggested path
+  // to the very first one. docs/05 "Chemin suggéré": "le chemin relie : la
+  // position actuelle, les cinq prochaines résidences" — the active item IS
+  // the first of those five. Kept separate from `residences` (badges stay
+  // exactly as before, no marker added for the active residence — unrelated
+  // pre-existing gap, out of scope here) — only the route waypoints gain it,
+  // capped at 5 residences total to stay faithful to the doc's own number.
+  const activeResidenceCoordinate: [number, number] | null =
+    highlighted.latitude !== null && highlighted.longitude !== null ? [highlighted.longitude, highlighted.latitude] : null;
+  const routeResidenceCoordinates = [
+    ...(activeResidenceCoordinate ? [activeResidenceCoordinate] : []),
+    ...residences.map((r) => r.coordinate),
+  ].slice(0, 5);
+
   // Real GPS fix (Sprint 017 partie 2/N) when the sensor has one — falls
   // back to the highlighted residence's own coordinate only while no fix
   // has arrived yet (permission not granted, or just not received one),
@@ -151,7 +168,7 @@ export function deriveMissionScreenState(
     map: {
       position,
       residences,
-      routeWaypoints: [[position.longitude, position.latitude], ...residences.map((r) => r.coordinate)],
+      routeWaypoints: [[position.longitude, position.latitude], ...routeResidenceCoordinates],
     },
   };
 }

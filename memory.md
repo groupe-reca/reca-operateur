@@ -1603,6 +1603,31 @@ suivant :
   build **release** (JS figé à la compilation, Sprint 020) — invisible sur le téléphone tant qu'un
   nouveau `gradlew assembleRelease`/`adb install -r` n'est pas fait sur le laptop du propriétaire.
 
+## Icône de navigation standard + chemin suggéré jusqu'à la première résidence (2026-08-08)
+
+Suite directe de la session de debug ci-dessus, deux demandes explicites du propriétaire avant le
+prochain réassemblage laptop/Android Studio (détail complet dans `plans.md` archivé/`tasks.md`) :
+
+- **Icône du tracteur jugée « trop bébé »** → remplacée par une flèche de navigation standard
+  (`lucide-react-native` `Navigation2`, style puk Google Maps/Waze, couleur `colors.navigation`).
+  `FixedTractor.tsx` renommé `NavigationArrow.tsx` (le nom devenait trompeur — pas juste un
+  changement d'asset). `assets/tractor.png` laissé sur disque, juste inutilisé (jamais de
+  suppression de fichier sans confirmation explicite, même position que la mission démo/résidence
+  148 Rue Scott plus haut).
+- **« Chemin suggéré jusqu'à la première résidence »** : sonnait comme une demande de nouvelle
+  fonctionnalité mais c'était un **bug** dans un mécanisme déjà entièrement construit (Sprint
+  005-006, Directions API Mapbox + repli ligne droite, déjà branché avec de vraies données) —
+  `routeWaypoints` utilisait `residences` (`nextMissionItems`), qui **exclut par construction**
+  l'item actif (`deriveActiveAndNext`), donc le chemin suggéré sautait toujours la toute première
+  résidence. Corrigé en ajoutant la résidence active en tête de `routeWaypoints` (plafonné à 5 au
+  total, fidèle à `docs/05` « Chemin suggéré »). **À retenir pour la prochaine fois** : quand le
+  propriétaire signale qu'une fonctionnalité « manque », vérifier d'abord si le mécanisme existe déjà
+  quelque part dans le repo (ce n'est pas la première fois cette session — même schéma que « écran
+  Aucune mission » juste avant) avant de supposer qu'il faut construire du neuf.
+- Les deux changements sont vérifiés `tsc`/`eslint`/`jest` (195/195) mais **pas visuellement** —
+  même limite build release que tout ce qui précède aujourd'hui : invisible sur le TECNO KL4 tant
+  qu'un nouveau `gradlew assembleRelease`/`adb install -r` n'est pas fait sur le laptop.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,

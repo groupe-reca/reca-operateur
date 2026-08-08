@@ -10,6 +10,76 @@ _Aucun plan actif pour le moment._
 
 ## Archivé
 
+### ✅ Icône de navigation standard + chemin suggéré jusqu'à la première résidence (2026-08-08)
+
+**Demande explicite du propriétaire** (avant le prochain réassemblage laptop/Android Studio), deux
+changements indépendants sur le Map Engine :
+
+**1. Icône du tracteur → flèche de navigation standard**
+
+Le tracteur vu du dessus (`assets/tractor.png`, exigé par `docs/05-Map-Engine.md` « Icône du
+tracteur » : cabine/pelle/souffleuse, doit rappeler un Kubota) est jugé « trop bébé » par le
+propriétaire. Remplacé par une icône vectorielle standard (`lucide-react-native`, déjà une
+dépendance — `Navigation2`, la flèche pleine classique des puks de position GPS type Google
+Maps/Waze), couleur `colors.navigation` (bleu RÉCA, déjà documentée « EN ROUTE, suggested route » —
+cohérent visuellement avec le chemin suggéré du point 2). Comportement de position/rotation
+**inchangé** : overlay fixe à l'écran (jamais un marqueur géographique), rotation selon le cap
+**validé** (jamais le cap GPS brut — invariant `CLAUDE.md`), ancre 24 % du bas de la carte.
+- **Renommage** (le nom actuel devient trompeur, pas juste un changement d'asset) :
+  `src/components/mission/FixedTractor.tsx` → `NavigationArrow.tsx` (composant `NavigationArrow`,
+  prop `headingDeg` conservée). `TractorMarker.tsx` (le wrapper de positionnement écran-fixe,
+  `components/map/`) et `TRACTOR_ANCHOR_FRACTION_FROM_TOP` (`mapCameraConfig.ts`) **conservés tels
+  quels** — leur nom décrit un comportement de positionnement générique, pas la forme de l'icône,
+  toujours exact.
+- **`ComponentGalleryScreen.tsx`** (écran de référence dev-only) : import/usage mis à jour, section
+  renommée « Flèche de navigation ».
+- **`docs/05-Map-Engine.md`** section « Icône du tracteur » réécrite pour refléter la décision (plus
+  d'exigence Kubota/vue du dessus) — `CLAUDE.md` : « ne jamais laisser une doc connue comme fausse ».
+- **Hors scope, délibéré** : suppression du fichier `assets/tractor.png` lui-même (aucune donnée
+  supprimée sans confirmation explicite, même principe que la décision du 2026-08-04 sur la mission
+  démo/résidence 148 Rue Scott — l'asset devient juste inutilisé, pas effacé).
+
+**2. Chemin suggéré jusqu'à la première résidence**
+
+Le mécanisme existe déjà en entier depuis le Sprint 005-006 (`fetchSuggestedRoute` via l'API
+Directions Mapbox, repli ligne droite, `SuggestedRouteLayer`/`useSuggestedRoute`) et est déjà appelé
+en direct avec de vraies données (`deriveMissionScreenState.ts`) — **ce n'est donc pas une nouvelle
+fonctionnalité à construire, mais un bug à corriger**. `docs/05` « Chemin suggéré » : *« le chemin
+relie : la position actuelle, les cinq prochaines résidences »*. Or `routeWaypoints` (ligne 154)
+n'utilise que `residences` = `nextMissionItems` (`MissionContext.deriveActiveAndNext`), qui **exclut
+explicitement** l'item actif (`items.filter(item => item.id !== activeMissionItem?.id ...)`) — le
+chemin suggéré saute donc directement à la **2e** résidence, sans jamais tracer vers la première
+(active/en cours), exactement le symptôme signalé.
+
+**Design** : dans `deriveMissionScreenState.ts`, construire une liste combinée [résidence active (si
+coordonnées connues), ...résidences suivantes], plafonnée à 5 (fidèle au chiffre du doc), utilisée
+**seulement** pour `routeWaypoints` — le tableau `residences` existant (repères/badges affichés sur
+la carte) reste inchangé, aucune régression visuelle sur les badges « à venir ». Aucun changement à
+`fetchSuggestedRoute`/`useSuggestedRoute`/`SuggestedRouteLayer` (déjà corrects) ni à Mapbox
+lui-même — uniquement les waypoints fournis en entrée.
+
+**Hors scope, délibéré** : afficher un repère carte dédié pour la résidence active elle-même (le
+tableau `residences`/`ResidenceMarkerLayer` ne la montre pas non plus aujourd'hui — gap préexistant,
+non demandé, pas touché ici pour rester sur le périmètre exact de la demande).
+
+**Réalisé conformément au plan.** `NavigationArrow.tsx` (renommé de `FixedTractor.tsx`, historique
+git préservé via `git mv`) rend `lucide-react-native` `Navigation2` (flèche pleine classique, même
+forme que les puks Google Maps/Waze), couleur `colors.navigation`, rotation par `headingDeg` inchangée.
+`TractorMarker.tsx`/`TRACTOR_ANCHOR_FRACTION_FROM_TOP` conservés tels quels (nom toujours exact — 
+positionnement générique, pas la forme). `ComponentGalleryScreen.tsx` mis à jour (import + section
+renommée). `docs/05-Map-Engine.md` « Icône du tracteur » réécrite. `routeWaypoints`
+(`deriveMissionScreenState.ts`) inclut désormais la résidence active en 1re position (juste après la
+position live), plafonné à 5 résidences au total (actif + suivantes) — `residences` (badges « à
+venir ») inchangé. 3 nouveaux tests purs `tests/deriveMissionScreenState.test.ts` (résidence active
+en tête, absente si coordonnées inconnues, plafond à 5 respecté). `tsc`/`eslint` propres, `jest`
+195/195 verts (20 suites, +3 tests). `expo-doctor` 19/20 (dérive pré-existante `expo`/`expo-asset`/
+`expo-location`, sans rapport avec ce changement). **Non vérifiable visuellement sur device depuis ce
+VPS** : changement JS pur mais l'APK installée est un build release (JS figé à la compilation) —
+nécessite le prochain `expo prebuild`/Android Studio du propriétaire, déjà prévu (« avant de
+réassembler »).
+
+## Archivé
+
 ### ✅ Rendre l'écran « Aucune mission » atteignable pour un vrai opérateur (2026-08-08)
 
 **Constat** : `NoMissionScreen.tsx` existe déjà et est déjà câblé dans `LiveMissionScreen.tsx`
