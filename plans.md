@@ -10,6 +10,52 @@ _Aucun plan actif pour le moment._
 
 ## Archivé
 
+### ✅ Rendre l'écran « Aucune mission » atteignable pour un vrai opérateur (2026-08-08)
+
+**Constat** : `NoMissionScreen.tsx` existe déjà et est déjà câblé dans `LiveMissionScreen.tsx`
+(`!ctx.mission || ctx.mission.status === 'COMPLETED'` → l'affiche, Sprint 017 partie 2/N). Il n'a
+donc jamais besoin d'être « implémenté » à nouveau. Le vrai problème, trouvé en testant en direct
+sur device (voir session propriétaire du jour, `memory.md` à venir) : `MissionContext.tsx:388-390`
+appelle inconditionnellement `seedDemoMissionIfEmpty(db, systemClock)` dès que `fetchAssignedMission`
+ne renvoie rien — **y compris pour un `employeeId` réel authentifié**. Dans `App.tsx`, `MissionProvider`
+reçoit toujours `auth.employeeId` (jamais `undefined` en usage réel, `MissionScreenPreview`/mocks
+statiques restent un chemin totalement séparé). Résultat : un vrai opérateur sans mission assignée
+ne voit jamais `!ctx.mission` — l'app lui invente systématiquement une "Mission du jour" factice
+(Route 12A/Kubota 01/adresses `rue Scott`/`rue Saint-Georges` codées en dur), rendant
+`NoMissionScreen` **inatteignable en production** malgré son existence.
+
+**Design** : `seedDemoMissionIfEmpty` ne doit s'exécuter que dans le cas pour lequel elle a été
+conçue au Sprint 007-008 (avant l'auth/l'intégration Supabase réelle) — l'absence totale
+d'`employeeId`. Changement d'une ligne de condition :
+```ts
+if (!assigned && !employeeId) {
+  await seedDemoMissionIfEmpty(db, systemClock);
+}
+```
+Pour un `employeeId` réel sans mission assignée (le cas testé aujourd'hui : missions Supabase
+supprimées), `assigned` reste `null`, aucune démo n'est semée, `mission` reste `null` en base vide →
+`NoMissionScreen` s'affiche enfin comme prévu. Aucun changement à `NoMissionScreen.tsx`/
+`LiveMissionScreen.tsx`/`fetchAssignedMission.ts` — la condition d'affichage était déjà correcte.
+
+**Hors scope, délibérément non fait** : suppression de la mission démo déjà présente localement sur
+un appareil existant (même position que la décision du 2026-08-04 ci-dessus — jamais de nettoyage de
+données sans confirmation explicite ; un `pm clear` reste la voie volontaire pour repartir propre) ;
+retrait pur et simple de `seedDemoMissionIfEmpty` (reste utile pour un futur écran de démo/preview
+sans compte réel, si un tel besoin apparaît).
+
+**Réalisé conformément au plan.** Nouveau test `tests/missionContext.test.tsx` (« no demo seed for a
+real authenticated operator with nothing assigned ») — mock de `@/integrations/supabase/
+fetchAssignedMission` (jamais mocké dans ce fichier avant, `jest.mock` ajouté), `employeeId` réel
+fourni, renvoie `null`, base locale vide → `mission` reste `null`, `missionRepo.getAll()` toujours
+vide après `load()`. Test existant du comportement démo (sans `employeeId`) resté vert sans
+modification. `tsc`/`eslint` propres, `jest` 192/192 verts (20 suites, +1 test). **Non vérifiable sur
+device depuis ce VPS** : changement JS pur (aucune dépendance native) mais l'APK installé sur le
+téléphone de test est un **build release** — le bundle JS est figé dans l'APK à la compilation
+(`memory.md`, Sprint 020) ; il faudra un nouveau `gradlew assembleRelease`/`adb install -r` (laptop/
+Android Studio, `CLAUDE.md`) avant que ce correctif soit visible sur l'appareil.
+
+## Archivé
+
 ### ✅ Build release autonome pour tests terrain (Sprint 020, 2026-08-04)
 
 **Objectif** : demande explicite du propriétaire — l'app doit fonctionner **sans son ordinateur**
