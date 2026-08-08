@@ -273,6 +273,79 @@ describe('deriveMissionScreenState', () => {
     expect(result?.map.residences.every((r) => r.n !== 2)).toBe(true);
   });
 
+  // Bug found in a live device session with the propriétaire (2026-08-08):
+  // `routeWaypoints` used to skip straight to the *second* residence
+  // (`residences` deliberately excludes the active item) — the suggested
+  // route never reached the very first stop. docs/05 "Chemin suggéré": the
+  // active residence is the first of "the next five".
+  it('routeWaypoints includes the active residence right after the live position, ahead of the next ones', () => {
+    const active = item({ id: 'i1', ordre: 1, status: 'EN_ROUTE', latitude: 45.5, longitude: -73.5 });
+    const next = item({ id: 'i2', ordre: 2, status: 'WAITING', latitude: 45.6, longitude: -73.6 });
+    const result = deriveMissionScreenState(
+      {
+        mission: missionBase,
+        activeMissionItem: active,
+        nextMissionItems: [next],
+        allMissionItems: [active, next],
+        synchronizationState: syncedState,
+        offlineState: onlineState,
+        gpsState: { available: true, position: { latitude: 45.78, longitude: -73.95, headingDegrees: 0 } },
+      },
+      now
+    );
+    expect(result?.map.routeWaypoints).toEqual([
+      [-73.95, 45.78], // live position
+      [-73.5, 45.5], // active residence — the fix
+      [-73.6, 45.6], // next residence, unchanged
+    ]);
+  });
+
+  it('routeWaypoints omits the active residence when its coordinate is unknown, same as before', () => {
+    const active = item({ id: 'i1', ordre: 1, status: 'EN_ROUTE', latitude: null, longitude: null });
+    const next = item({ id: 'i2', ordre: 2, status: 'WAITING', latitude: 45.6, longitude: -73.6 });
+    const result = deriveMissionScreenState(
+      {
+        mission: missionBase,
+        activeMissionItem: active,
+        nextMissionItems: [next],
+        allMissionItems: [active, next],
+        synchronizationState: syncedState,
+        offlineState: onlineState,
+        gpsState: { available: true, position: { latitude: 45.78, longitude: -73.95, headingDegrees: 0 } },
+      },
+      now
+    );
+    expect(result?.map.routeWaypoints).toEqual([
+      [-73.95, 45.78],
+      [-73.6, 45.6],
+    ]);
+  });
+
+  it('routeWaypoints stays capped at 5 residences (active + next) even with more available', () => {
+    const active = item({ id: 'i0', ordre: 0, status: 'EN_ROUTE', latitude: 0, longitude: 0 });
+    const nextItems = [
+      item({ id: 'i1', ordre: 1, status: 'WAITING', latitude: 1, longitude: 1 }),
+      item({ id: 'i2', ordre: 2, status: 'WAITING', latitude: 2, longitude: 2 }),
+      item({ id: 'i3', ordre: 3, status: 'WAITING', latitude: 3, longitude: 3 }),
+      item({ id: 'i4', ordre: 4, status: 'WAITING', latitude: 4, longitude: 4 }),
+      item({ id: 'i5', ordre: 5, status: 'WAITING', latitude: 5, longitude: 5 }),
+    ];
+    const result = deriveMissionScreenState(
+      {
+        mission: missionBase,
+        activeMissionItem: active,
+        nextMissionItems: nextItems,
+        allMissionItems: [active, ...nextItems],
+        synchronizationState: syncedState,
+        offlineState: onlineState,
+        gpsState: noGpsFix,
+      },
+      now
+    );
+    // 1 live position + 5 residences (active + 4 of the 5 next ones) — never 6.
+    expect(result?.map.routeWaypoints).toHaveLength(6);
+  });
+
   // Bug found testing on a real device (2026-08-03): the map position used
   // to always fall back to the residence's own coordinate, real GPS fix or
   // not — this never exercised the fix path at all.

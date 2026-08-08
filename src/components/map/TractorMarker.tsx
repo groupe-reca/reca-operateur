@@ -2,18 +2,18 @@ import { StyleSheet, View } from 'react-native';
 
 import { TRACTOR_ANCHOR_FRACTION_FROM_TOP } from '@/engines/map/mapCameraConfig';
 
-import { FixedTractor } from '../mission/FixedTractor';
+import { NavigationArrow } from '../mission/NavigationArrow';
 
-// Screen-fixed overlay — NOT a geographic marker. HANDOFF §1: "PNG
-// transparent fixe (overlay écran), centre horizontal, ancre à 24% du bas de
-// la zone carte". The map moves under it; the icon itself never rotates —
-// the Camera's own heading conveys direction (docs/05: "le tracteur reste
-// fixe à l'écran, la carte se déplace sous lui" — same resolved approach
-// already validated on the sibling reca-operator app for the same problem).
+// Screen-fixed overlay — NOT a geographic marker. Centre horizontal, ancre à
+// 24% du bas de la zone carte (HANDOFF §1). The map moves under it; the icon
+// itself never rotates on its own — the Camera's own heading conveys
+// direction (docs/05: "le [marqueur] reste fixe à l'écran, la carte se
+// déplace sous lui" — same resolved approach already validated on the
+// sibling reca-operator app for the same problem).
 export function TractorMarker() {
   return (
     <View style={styles.wrap} pointerEvents="none">
-      <FixedTractor width={132} />
+      <NavigationArrow width={132} />
     </View>
   );
 }

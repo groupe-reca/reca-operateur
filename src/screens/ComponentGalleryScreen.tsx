@@ -11,9 +11,9 @@ import { VoiceButton } from '@/components/controls/VoiceButton';
 import { AlertCard } from '@/components/mission/AlertCard';
 import { AppHeader } from '@/components/mission/AppHeader';
 import { CurrentResidenceSheet } from '@/components/mission/CurrentResidenceSheet';
-import { FixedTractor } from '@/components/mission/FixedTractor';
 import { MissionCard } from '@/components/mission/MissionCard';
 import { MissionCardCompact } from '@/components/mission/MissionCardCompact';
+import { NavigationArrow } from '@/components/mission/NavigationArrow';
 import { OfflineIndicator } from '@/components/mission/OfflineIndicator';
 import { PhaseTimer } from '@/components/mission/PhaseTimer';
 import { SyncIndicator } from '@/components/mission/SyncIndicator';
@@ -121,9 +121,9 @@ export function ComponentGalleryScreen() {
         </View>
       </Section>
 
-      <Section title="Tracteur fixe">
+      <Section title="Flèche de navigation">
         <View style={styles.center}>
-          <FixedTractor width={132} />
+          <NavigationArrow width={132} />
         </View>
       </Section>
 

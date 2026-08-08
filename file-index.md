@@ -194,7 +194,8 @@ Chaque dossier a un `README.md` décrivant sa responsabilité unique.
     et `formatElapsedWithHours` purs, testés), `AlertCard`, `SystemStatus`, `OfflineIndicator`,
     `SyncIndicator` (exporte aussi `SYNC_STATE_META`, réutilisé par `AppHeader`),
     `CurrentResidenceSheet` (prop `bare` 2026-08-02 : contenu nu sans `GlassCard` propre, pour
-    vivre dans `BottomSheet`), `UpcomingResidenceRow`, `FixedTractor`,
+    vivre dans `BottomSheet`), `UpcomingResidenceRow`, `NavigationArrow` (renommé de `FixedTractor`
+    le 2026-08-08 — flèche de navigation standard, plus l'illustration Kubota),
     `CurrentResidenceProgressCard` (colonne gauche ; Sprint 004 : `PhaseTimer` réel + prop
     `color` threadée au lieu de `colors.success` en dur), `ResidenceTasksCard` (panneau droit
     tâches, seulement pour EN COURS), `ProblemStateCard` (prop `bare` 2026-08-02, remplace

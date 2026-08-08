@@ -128,17 +128,13 @@ Cette position permet de voir davantage la route devant le véhicule.
 
 # Icône du tracteur
 
-Le tracteur est représenté par une vue du dessus.
+Décision propriétaire (2026-08-08) : l'illustration Kubota vue du dessus a été remplacée par une
+flèche de navigation standard (`lucide-react-native` `Navigation2`, bleu `colors.navigation` — même
+couleur que le chemin suggéré), le style de puk de position utilisé par les applications de
+navigation grand public (Google Maps, Waze). L'ancienne exigence (cabine/pelle/souffleuse, modèle
+Kubota) ne s'applique plus.
 
-Le modèle doit rappeler un Kubota.
-
-Éléments visibles :
-
-- cabine
-- pelle extensible avant
-- souffleuse arrière
-
-Le tracteur est orienté selon le cap validé.
+Le tracteur (la flèche) est orienté selon le cap validé.
 
 Jamais selon le cap instantané du GPS.
 
