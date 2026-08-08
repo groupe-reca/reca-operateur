@@ -588,6 +588,24 @@
   reverse --remove-all` confirmé vide, app relancée et fonctionnelle entièrement déconnectée de ce
   VPS — carte Mapbox réelle, Mission #9 réelle, nouvelle icône flocon, écran Paramètres complet
   (Détection GPS 250/30), aucun crash sur `adb logcat`. `tsc`/`eslint`/`jest` (191/191) verts.
+- [x] **Corrigé — écran « Aucune mission » inatteignable pour un vrai opérateur** (2026-08-08,
+  trouvé en testant en direct sur device avec le propriétaire, plan dans `plans.md` archivé). Le
+  bug **n'était pas l'absence de l'écran** — `NoMissionScreen.tsx` existe et est câblé dans
+  `LiveMissionScreen.tsx` depuis le Sprint 017 partie 2/N. Cause réelle :
+  `MissionContext.tsx` semait toujours `seedDemoMissionIfEmpty` dès que `fetchAssignedMission` ne
+  renvoyait rien, **même pour un `employeeId` authentifié réel** — un opérateur sans mission
+  assignée voyait donc une fausse « Mission du jour » (Route 12A/Kubota 01 codés en dur) au lieu de
+  `NoMissionScreen`. **Corrigé** : la condition de semis devient `if (!assigned && !employeeId)` —
+  le seed ne sert plus que le cas pour lequel il a été conçu au Sprint 007-008 (avant l'auth réelle).
+  Nouveau test `tests/missionContext.test.tsx` (mock de `fetchAssignedMission`, jamais mocké dans ce
+  fichier avant). **Hors scope, délibéré** : pas de nettoyage automatique d'une mission démo déjà
+  présente localement sur un appareil existant (même position que la décision du 2026-08-04 sur la
+  résidence « 148 Rue Scott » — `pm clear` reste la voie volontaire) ; `seedDemoMissionIfEmpty`
+  elle-même conservée (utile à un futur écran preview/démo sans compte réel). Vérifié :
+  `tsc`/`eslint` propres, `jest` 192/192 verts (20 suites, +1 test). **Non vérifiable sur device
+  depuis ce VPS** : changement JS pur mais l'APK installé sur le TECNO KL4 de test est un build
+  **release** (JS figé dans l'APK, Sprint 020) — nécessite un nouveau
+  `gradlew assembleRelease`/`adb install -r` sur le laptop du propriétaire pour être visible.
 - [ ] **Sprint 020+ — Tests terrain, stabilisation, pilote, production** (Phases 12-15, reste à
   faire) : ce qui précède livre l'**infrastructure** du build autonome ; la conduite réelle des
   tests terrain (retours opérateurs, stabilisation en conditions réelles, pilote, production) reste

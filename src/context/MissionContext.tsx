@@ -243,9 +243,10 @@ type Props = {
   getDbOverride?: () => Promise<Db>;
   // Set once the operator is authenticated (AuthContext.employeeId). When
   // present, a real assigned mission is fetched from Supabase and takes
-  // priority; seedDemoMissionIfEmpty stays the dev-only fallback (no
-  // assigned mission found, or fetch failed — local-first, never blocks the
-  // screen on a network error).
+  // priority; `seedDemoMissionIfEmpty` never runs (an authenticated operator
+  // with none assigned sees `NoMissionScreen`, not invented data) — the seed
+  // stays the no-`employeeId` fallback only (local-first: a failed fetch
+  // falls back to whatever is already on the device, never blocks/reseeds).
   employeeId?: string | null;
   // Injectable for tests — same reasoning as `getDbOverride`: without these,
   // a test that triggers a mutation would make `runSyncCycle()` hit the
@@ -385,7 +386,11 @@ export function MissionProvider({
           assigned = null;
         }
       }
-      if (!assigned) {
+      // Only for the no-`employeeId` case this was built for (Sprint
+      // 007-008, before real auth/Supabase existed) — a real authenticated
+      // operator with no assigned mission must see `NoMissionScreen`
+      // (Sprint 017 partie 2/N), never an invented "Mission du jour".
+      if (!assigned && !employeeId) {
         await seedDemoMissionIfEmpty(db, systemClock);
       }
 

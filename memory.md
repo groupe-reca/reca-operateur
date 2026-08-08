@@ -1547,6 +1547,62 @@ téléphone, pas de laptop à proximité) était donc impossible avec ce qui exi
   dédiée « Build release (tests terrain) » documentant la commande manuelle
   (`gradlew assembleRelease` + `adb install -r`) pour reproduire sans repasser par ce contexte.
 
+## Session de terrain avec le propriétaire — GPS/mission de test/écran « Aucune mission » (2026-08-08)
+
+Session pilotée entièrement par `adb` sur le TECNO KL4 branché à ce VPS, en parallèle avec le
+propriétaire manipulant le téléphone physiquement. Enchaînement de constats, chacun ayant mené au
+suivant :
+
+- **Piège d'environnement (à retenir)** : `adb shell <cmd> "/storage/emulated/0/..."` exécuté via le
+  Bash tool (Git Bash/MSYS) convertit silencieusement tout argument commençant par `/` en chemin
+  Windows (`C:/Program Files/Git/storage/emulated/...`), cassant la commande sans erreur claire.
+  Fix : préfixer `MSYS_NO_PATHCONV=1`.
+- **Install APK échouée sur le téléphone (« erreur » non précisée par l'utilisateur)** : l'APK
+  lui-même était valide — `adb shell pm install -r /data/local/tmp/....apk` (après `cp` depuis
+  `/storage/emulated/0/Download/`, `pm install` direct sur ce chemin échoue avec un déni SELinux
+  `avc: denied { read }` sur le contexte FUSE) a réussi sans erreur. Cause probable côté téléphone :
+  « Installer des applications inconnues » non activé pour le gestionnaire de fichiers utilisé, ou
+  Play Protect — jamais confirmé, hors de portée d'`adb` pour diagnostiquer plus précisément.
+- **« Le tracteur n'est pas connecté au GPS »** (signalé une 2e fois par le propriétaire, même
+  formulation que le Bug 3 déjà documenté 2026-08-03 plus haut dans ce fichier) : `dumpsys location`
+  ne montrait aucune requête attribuée à `ca.groupereca.recaoperateur` alors que Google Maps, lui, en
+  avait — mais **piste écartée** : `expo-location`/Play Services multiplexe les requêtes via
+  `FusedLocationProviderClient`, une alarme `NetworkLocationScanner` avec `WorkSource{...
+  recaoperateur}` était bien visible dans `logcat`, donc le capteur réel était probablement actif
+  malgré l'absence dans le résumé `dumpsys location`. Le simulateur GPS dev (`DevScreen`) a aussi été
+  écarté avec certitude : gated par `__DEV__`, faux en build release — impossible qu'il tourne sur
+  l'APK installée.
+- **Vrai test qui a tranché** : bouton « Recentrer » (⌖) — la distance affichée a bougé de 293 m à
+  295 m entre deux appuis à ~1 min d'écart, preuve que le fix GPS est réellement vivant (bruit GPS
+  normal à l'arrêt), pas figé/déconnecté.
+- **« Quand je bouge la carte, le tracteur n'est pas attaché »** : comportement voulu, pas un bug —
+  `TractorMarker` est un overlay fixe à l'écran (`MissionMapView.tsx`), en dehors de la `Mapbox.
+  MapView`, cohérent avec l'invariant `CLAUDE.md` « tracteur fixe au centre, c'est la carte qui
+  tourne ». Glisser la carte ne détache que la **caméra** de la position GPS ; elle se resynchronise
+  au prochain fix réel, ou immédiatement via « Recentrer ».
+- **Root cause réelle du décalage perçu** : l'adresse « 148 Rue Scott » affichée n'était **pas** une
+  donnée périmée locale (vérifié : `adb shell pm clear` + réouverture montre l'écran de connexion
+  puis, après reconnexion, **la même mission réapparaît identique depuis Supabase** — donc c'est
+  bien une vraie ligne serveur active, pas un résidu local). C'était en fait **Mission #9**, la
+  mission de test créée le 2026-08-03 pour le premier test de bout en bout sur device (voir plus
+  haut dans ce fichier, Bug 3/Bug 4) — jamais fermée côté serveur depuis, donc toujours renvoyée par
+  `fetchAssignedMission` (`statut='en_cours'`) à chaque nouvelle connexion.
+- **« J'ai forcé l'état de toutes les résidences à terminée »** n'a rien changé à l'écran — attendu :
+  `fetchAssignedMission.ts` filtre sur `missions.statut`, pas sur `mission_items.statut_operateur`.
+  Forcer les résidences ne touche jamais la ligne `missions` elle-même. Dans `reca-app`
+  (`missions.service.ts`), seule l'action **au niveau mission** (« Terminer »/« Terminer avec
+  anomalies », `updateMissionStatus`) écrit `statut='terminee'`/`'terminee_avec_anomalies'` — ce sont
+  ces deux valeurs, pas `'en_cours'`, que la requête `.in('statut', ['planifiee','en_cours'])` de
+  `reca-operateur` exclut.
+- **Après suppression réelle de la mission côté Supabase + `pm clear`** : la mission de test a bien
+  disparu, mais l'écran affichait quand même une « Mission du jour » (Route 12A/Kubota 01) — pas un
+  résidu, la **mission de démo intégrée** (`seedDemoMissionIfEmpty`) se déclenchait automatiquement
+  faute de mission réelle assignée. Voir la tâche « écran Aucune mission inatteignable » ci-dessus
+  (`tasks.md`) pour le correctif : le seed ne s'exécute plus qu'en l'absence totale d'`employeeId`.
+- **Non vérifié sur device** : le correctif est un changement JS pur, mais l'APK installée est un
+  build **release** (JS figé à la compilation, Sprint 020) — invisible sur le téléphone tant qu'un
+  nouveau `gradlew assembleRelease`/`adb install -r` n'est pas fait sur le laptop du propriétaire.
+
 ## Système de mémoire
 
 - Fichiers **à la racine** du repo (imposé par `docs/`) : `memory.md`, `tasks.md`, `plans.md`,

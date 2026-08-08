@@ -8,11 +8,21 @@ import { MissionProvider, selectMissionId, useMissionContext } from '@/context/M
 import type { LocationProvider } from '@/integrations/location/expoLocationProvider';
 import type { NetworkSensor } from '@/integrations/network/expoNetInfoProvider';
 import type { DetectionRadiiOverride, DetectionRadiiStorage } from '@/integrations/settings/detectionRadiiStorage';
+import { fetchAssignedMission } from '@/integrations/supabase/fetchAssignedMission';
 import { createMissionItemRepository } from '@/persistence/repositories/missionItemRepository';
 import { createMissionRepository } from '@/persistence/repositories/missionRepository';
 import { createOperatorSessionRepository } from '@/persistence/repositories/operatorSessionRepository';
 
 import { createFakeDb } from './testFakeDb';
+
+// Never touches the real Supabase client — `fetchAssignedMission` is only
+// ever exercised (via `employeeId`) by the test below that explicitly mocks
+// its return value; every other test in this file omits `employeeId` and
+// never reaches it regardless. `jest.mock` calls are hoisted above imports
+// by babel-jest, so declaration order here doesn't matter at runtime — only
+// `import/first` cares.
+jest.mock('@/integrations/supabase/fetchAssignedMission');
+const mockedFetchAssignedMission = fetchAssignedMission as jest.MockedFunction<typeof fetchAssignedMission>;
 
 // Sprint 017 (partie 1/N) integration test: MissionProvider wired to the
 // real State Machine/GPS/Sync/Offline/Voice engines over a fake in-memory DB
@@ -788,5 +798,33 @@ describe('MissionContext — mission selection with a pre-existing demo + real m
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.mission?.id).toBe('real-mission');
+  });
+});
+
+describe('MissionContext — no demo seed for a real authenticated operator with nothing assigned', () => {
+  it('leaves mission null (never invents a demo mission) when employeeId is set and fetchAssignedMission finds nothing', async () => {
+    mockedFetchAssignedMission.mockResolvedValueOnce(null);
+    const db = createFakeDb();
+    const missionRepo = createMissionRepository(db);
+
+    const { result } = renderHook(() => useMissionContext(), {
+      wrapper: ({ children }) => (
+        <MissionProvider
+          employeeId="real-employee-1"
+          getDbOverride={() => Promise.resolve(db)}
+          syncTransportOverride={() => createFakeTransport()}
+          speakerOverride={() => createFakeSpeaker()}
+          locationProviderOverride={() => createFakeLocationProvider()}
+          networkSensorOverride={() => createFakeNetworkSensor()}
+          detectionRadiiStorageOverride={() => createFakeDetectionRadiiStorage()}
+        >
+          {children}
+        </MissionProvider>
+      ),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.mission).toBeNull();
+    expect(await missionRepo.getAll()).toHaveLength(0);
   });
 });
